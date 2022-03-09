@@ -47,8 +47,8 @@ func (c *Client) ContainerRun(image string, conf container.Config, hostConf cont
 	return
 }
 
-// ContainerStopByImage 停止并删除容器 TODO 优化
-func (c *Client) ContainerStopByImage(image string) (err error) {
+// StopContainer 停止容器 TODO 优化
+func (c *Client) StopContainer(image string) (err error) {
 
 	ctx := context.Background()
 	var containers []types.Container
@@ -59,12 +59,36 @@ func (c *Client) ContainerStopByImage(image string) (err error) {
 
 	for _, con := range containers {
 		if con.Image == image {
-			logger.Debug("stop container", image)
+			logger.Debugf("stop container %s:%s", con.ID, image)
 			err = c.DockerClient.ContainerStop(ctx, con.ID, nil)
 			if err != nil {
 				return
 			}
-			logger.Debug("container stop", con.ImageID)
+			logger.Debugf("container %s:%s stop", con.ID, image)
+			return
+		}
+	}
+	return
+}
+
+// RemoveContainer 删除容器 TODO 优化
+func (c *Client) RemoveContainer(image string) (err error) {
+
+	ctx := context.Background()
+	var containers []types.Container
+	containers, err = c.DockerClient.ContainerList(ctx, types.ContainerListOptions{All: true})
+	if err != nil {
+		return
+	}
+
+	for _, con := range containers {
+		if con.Image == image {
+			logger.Debugf("remove container %s:%s", con.ID, image)
+			err = c.DockerClient.ContainerRemove(ctx, con.ID, types.ContainerRemoveOptions{})
+			if err != nil {
+				return
+			}
+			logger.Debugf("container %s:%s removed", con.ID, image)
 			return
 		}
 	}
@@ -83,12 +107,12 @@ func (c *Client) ContainerRestartByImage(image string) (err error) {
 
 	for _, con := range containers {
 		if con.Image == image {
-			logger.Debug("restart container", image)
+			logger.Debugf("restart container %s:%s", con.ID, image)
 			err = c.DockerClient.ContainerRestart(ctx, con.ID, nil)
 			if err != nil {
 				return
 			}
-			logger.Debug("container restarted", con.ImageID)
+			logger.Debugf("container %s:%s restarted", con.ID, image)
 		}
 	}
 	return nil
@@ -111,4 +135,33 @@ func (c *Client) GetContainerByImage(image string) (id string, err error) {
 		}
 	}
 	return "", errors.New("not found")
+}
+
+// ContainerKillByImage 给容器发送信号
+func (c *Client) ContainerKillByImage(image string, signal string) (err error) {
+
+	ctx := context.Background()
+	var containers []types.Container
+	containers, err = c.DockerClient.ContainerList(ctx, types.ContainerListOptions{})
+	if err != nil {
+		return
+	}
+
+	for _, con := range containers {
+		if con.Image == image {
+			logger.Debugf("kill container %s", image)
+			err = c.DockerClient.ContainerKill(ctx, con.ID, signal)
+			if err != nil {
+				return
+			}
+			logger.Debugf("container %s killed", con.ImageID)
+		}
+	}
+	return nil
+}
+
+// ContainerList 返回启动的容器列表
+func (c *Client) ContainerList() ([]types.Container, error) {
+	ctx := context.Background()
+	return c.DockerClient.ContainerList(ctx, types.ContainerListOptions{})
 }

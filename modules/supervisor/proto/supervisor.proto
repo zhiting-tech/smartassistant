@@ -1,9 +1,40 @@
 syntax = "proto3";
-package proto;
-option go_package = "github.com/zhiting-tech/smartassistant/modules/supervisor/proto";
+package supervisor.proto;
+option go_package = "./proto";
+
+import "google/protobuf/empty.proto";
 
 service Supervisor {
   rpc Restart(RestartReq) returns(Response);
+  rpc Backup(BackupReq) returns(Response);
+  rpc Restore(RestoreReq) returns(Response);
+  rpc Update(UpdateReq) returns(Response);
+  rpc UpdateSystem(UpdateSystemReq) returns(Response);
+  rpc GetSystemInfo(google.protobuf.Empty) returns(GetSystemInfoResp);
+  rpc GetExtensions(google.protobuf.Empty) returns(GetExtensionsResp);
+}
+
+message UpdateItem {
+  string ServiceName = 1;
+  string NewImage = 2;
+  string Version = 3;
+}
+
+message Extension {
+  string Name = 1;
+}
+
+message Plugin {
+  string ID = 1;
+  string Brand = 2;
+  string Image = 3;
+  string Version = 4;
+}
+
+message Smartassistant {
+  string Name = 1;
+  string Version = 2;
+  string Registry = 3;
 }
 
 message RestartReq {
@@ -11,7 +42,36 @@ message RestartReq {
   string NewImage = 2;
 }
 
+message BackupReq {
+  string Note = 1;
+  Smartassistant Smartassistant = 2;
+  repeated Plugin Plugins = 3;
+}
+
+message RestoreReq {
+  string File = 1;
+  Smartassistant Smartassistant = 2;
+  repeated Plugin Plugins = 3;
+}
+
+message UpdateReq {
+  repeated UpdateItem UpdateItems = 1;
+  string SoftwareVersion = 2;
+}
+
+message UpdateSystemReq {
+  string Image = 1;
+}
+
 message Response {
   int32 status = 1;
   string reason = 2;
+}
+
+message GetSystemInfoResp {
+  string Version = 1;
+}
+
+message GetExtensionsResp {
+  repeated Extension Extensions = 1;
 }

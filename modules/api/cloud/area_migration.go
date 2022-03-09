@@ -24,7 +24,6 @@ import (
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
 	"gorm.io/gorm"
-	"gorm.io/gorm/schema"
 )
 
 const (
@@ -32,7 +31,7 @@ const (
 )
 
 func getBaseTempDir() string {
-	path := path.Join(config.GetConf().SmartAssistant.RuntimePath, "temp")
+	path := path.Join(config.GetConf().SmartAssistant.RuntimePath, "run", "smartassistant", "temp")
 	_, err := os.Stat(path)
 	if err != nil {
 		os.MkdirAll(path, os.ModePerm)
@@ -66,8 +65,7 @@ func (req *AreaMigrationReq) ReBind(areaID uint64) (err error) {
 		"sum":                   req.Sum,
 		"local_said":            config.GetConf().SmartAssistant.ID,
 		"local_migration_token": jwt,
-		"local_area_token":      setting.GetUserCredentialAuthToken(areaID),
-		"local_sa_lan_address":  req.SADevice.Address,
+		"local_area_token":      setting.GetAreaAuthToken(areaID),
 	}
 	content, err = json.Marshal(body)
 	if err != nil {
@@ -217,57 +215,14 @@ func (req *AreaMigrationReq) ProcessCloudToLocal() (err error) {
 
 }
 
-func copyTable(src *gorm.DB, dst *gorm.DB, table interface{}, delete bool) (err error) {
-
-	var (
-		tableSlice reflect.Value
-	)
-
-	// 判断是否实现TableName方法
-	tabler, ok := table.(schema.Tabler)
-	if !ok {
-		return errors2.New("Not implement TableName")
-	}
-
-	// 生成table类型的Slice
+func getTableFullName(table interface{}) string {
 	tableType := reflect.TypeOf(table)
 	if tableType.Kind() == reflect.Ptr {
-		tableSlice = reflect.MakeSlice(reflect.SliceOf(tableType.Elem()), 0, 0)
-	} else {
-		tableSlice = reflect.MakeSlice(reflect.SliceOf(tableType), 0, 0)
+		tableType = tableType.Elem()
 	}
-
-	// 生成Slice的指针
-	addr := reflect.New(tableSlice.Type())
-	addr.Elem().Set(tableSlice)
-	valuesAddr := addr.Elem().Addr().Interface()
-
-	// 查找云端数据库中该表所有的数据
-	err = src.Table(tabler.TableName()).Find(valuesAddr).Error
-	if err != nil {
-		return err
-	}
-	if delete {
-		// 删除本地数据库该表所有的数据
-		err = dst.Table(tabler.TableName()).Unscoped().Where("true").Delete(nil).Error
-		if err != nil {
-			if !errors2.Is(err, gorm.ErrRecordNotFound) {
-				return err
-			}
-		}
-	}
-	// 判断Slice是否大于0,大于0则创建
-	if addr.Elem().Len() > 0 {
-		values := addr.Elem().Interface()
-		err = dst.Table(tabler.TableName()).Create(values).Error
-		if err != nil {
-			if !errors2.Is(err, gorm.ErrEmptySlice) {
-				return err
-			}
-		}
-	}
-
-	return nil
+	name := tableType.Name()
+	pktPath := tableType.PkgPath()
+	return fmt.Sprintf("%s.%s", pktPath, name)
 }
 
 // restoreCloudAreaDBData 从云端数据库恢复数据
@@ -307,12 +262,18 @@ func restoreCloudAreaDBData(db *gorm.DB, tx *gorm.DB) (err error) {
 		return err
 	}
 
+	if err = tx.Model(entity.Device{}).Where("true").Unscoped().Delete(nil).Error; err != nil {
+		if !errors2.Is(err, gorm.ErrRecordNotFound) {
+			return
+		} else {
+			err = nil
+		}
+	}
 	if len(devices) > 0 {
 		for index := 0; index < len(devices); index++ {
 			if devices[index].Model == types.SaModel {
 				continue
 			}
-			devices[index].ID = 0
 			err = tx.Model(entity.Device{}).Create(&devices[index]).Error
 			if err != nil {
 				return err
@@ -329,18 +290,17 @@ func restoreCloudAreaDBData(db *gorm.DB, tx *gorm.DB) (err error) {
 
 	// 遍历迁移剩余的表
 	excludeTables := map[string]interface{}{
-		entity.Device{}.TableName(): entity.Device{},
-		entity.Area{}.TableName():   entity.Area{},
-		entity.Client{}.TableName(): entity.Client{},
+		getTableFullName(entity.Device{}): entity.Device{},
+		getTableFullName(entity.Area{}):   entity.Area{},
+		getTableFullName(entity.Client{}): entity.Client{},
 	}
 	for _, table := range entity.Tables {
-		tabler := table.(schema.Tabler)
-		_, ok := excludeTables[tabler.TableName()]
+		_, ok := excludeTables[getTableFullName(table)]
 		if ok {
 			continue
 		}
 
-		err = copyTable(db, tx, table, true)
+		err = entity.CopyTable(db, tx, table, true)
 		if err != nil {
 			return
 		}
@@ -361,7 +321,7 @@ func backupDatabase() {
 		SkipHooks: true,
 	})
 	for _, table := range entity.Tables {
-		err = copyTable(tx, db, table, false)
+		err = entity.CopyTable(tx, db, table, false)
 		if err != nil {
 			logger.Debugf("copytable error %v", err)
 			os.Remove(file)
@@ -374,6 +334,7 @@ func AreaMigration(c *gin.Context) {
 	var (
 		req AreaMigrationReq
 		err error
+		saDevice entity.Device
 	)
 	defer func() {
 		response.HandleResponse(c, err, nil)
@@ -387,4 +348,22 @@ func AreaMigration(c *gin.Context) {
 
 	backupDatabase()
 	err = req.ProcessCloudToLocal()
+	if err == nil {
+		if saDevice, err = entity.GetSaDevice(); err != nil {
+			return
+		}
+		err = SetAreaSynced(saDevice.AreaID)
+	}
+
+}
+
+
+// SetAreaSynced 设置是否绑定云端
+func SetAreaSynced(areaID uint64) (err error) {
+	if err = entity.UpdateArea(areaID, map[string]interface{}{
+		"is_bind_cloud": true,
+	}); err != nil {
+		return
+	}
+	return
 }

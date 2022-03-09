@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	mocksStore "github.com/zhiting-tech/smartassistant/pkg/cache/test/mocks/store/clients"
@@ -19,6 +20,38 @@ func TestNewGoCache(t *testing.T) {
 	assert.IsType(t, new(GoCacheStore), store)
 	assert.Equal(t, client, store.client)
 	assert.Equal(t, options, store.options)
+}
+
+func TestGoCacheSetNX(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	cacheKey := "my-key"
+	cacheValue := "my-cache-value"
+
+	client := mocksStore.NewMockGoCacheClientInterface(ctrl)
+	client.EXPECT().Add(cacheKey, cacheValue, 10*time.Second).Return(nil)
+
+	store := NewGoCache(client, nil)
+
+	ok := store.SetNX(cacheKey, cacheValue, 10*time.Second)
+
+	assert.Equal(t, true, ok)
+}
+
+func TestGoCacheSetNXWhenExists(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	cacheKey := "my-key"
+	cacheValue := "my-cache-value"
+
+	client := mocksStore.NewMockGoCacheClientInterface(ctrl)
+	client.EXPECT().Add(cacheKey, cacheValue, 10*time.Second).Return(errors.New("already exists"))
+
+	store := NewGoCache(client, nil)
+
+	ok := store.SetNX(cacheKey, cacheValue, 10*time.Second)
+
+	assert.Equal(t, false, ok)
 }
 
 func TestGoCacheGet(t *testing.T) {

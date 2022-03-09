@@ -1,11 +1,6 @@
 package brand
 
 import (
-	"fmt"
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/zhiting-tech/smartassistant/modules/api/test"
@@ -57,29 +52,12 @@ func TestBrand(t *testing.T) {
 		},
 	}
 
-	// 先在当前目录下复制一份plugins.json文件，测试完成后再将其删除
-	curDir, _ := os.Getwd()
-	fmt.Println(curDir)
-	rootDir := strings.Replace(curDir, filepath.Join("internal", "api", "brand"), "", 1)
-	fmt.Println(rootDir)
-	pj, err := ioutil.ReadFile(rootDir + "plugins.json")
-	if err == nil {
-		e := ioutil.WriteFile("./plugins.json", pj, 0666)
-		if e == nil {
-			fmt.Println("生成临时plugins.json文件成功...")
-		}
-	}
-
 	// 启动插件管理
 	m := plugin.GetGlobalManager()
 	m.LoadPlugins()
 
 	test.RunApiTest(t, RegisterBrandRouter, cases, test.WithRoles("管理员"))
 
-	re := os.Remove("./plugins.json")
-	if re == nil {
-		fmt.Println("成功删除临时文件...")
-	}
 }
 
 func TestMain(m *testing.M) {

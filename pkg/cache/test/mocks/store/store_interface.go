@@ -49,7 +49,7 @@ func (mr *MockStoreInterfaceMockRecorder) Clear() *gomock.Call {
 }
 
 // Delete mocks base method.
-func (m *MockStoreInterface) Delete(key interface{}) error {
+func (m *MockStoreInterface) Delete(key string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Delete", key)
 	ret0, _ := ret[0].(error)
@@ -63,7 +63,7 @@ func (mr *MockStoreInterfaceMockRecorder) Delete(key interface{}) *gomock.Call {
 }
 
 // Get mocks base method.
-func (m *MockStoreInterface) Get(key interface{}) (interface{}, error) {
+func (m *MockStoreInterface) Get(key string) (interface{}, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Get", key)
 	ret0, _ := ret[0].(interface{})
@@ -92,7 +92,7 @@ func (mr *MockStoreInterfaceMockRecorder) GetType() *gomock.Call {
 }
 
 // GetWithTTL mocks base method.
-func (m *MockStoreInterface) GetWithTTL(key interface{}) (interface{}, time.Duration, error) {
+func (m *MockStoreInterface) GetWithTTL(key string) (interface{}, time.Duration, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetWithTTL", key)
 	ret0, _ := ret[0].(interface{})
@@ -108,15 +108,29 @@ func (mr *MockStoreInterfaceMockRecorder) GetWithTTL(key interface{}) *gomock.Ca
 }
 
 // Set mocks base method.
-func (m *MockStoreInterface) Set(key, value interface{}, expir time.Duration) error {
+func (m *MockStoreInterface) Set(key string, value interface{}, expiration time.Duration) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Set", key, value, expir)
+	ret := m.ctrl.Call(m, "Set", key, value, expiration)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Set indicates an expected call of Set.
-func (mr *MockStoreInterfaceMockRecorder) Set(key, value, expir interface{}) *gomock.Call {
+func (mr *MockStoreInterfaceMockRecorder) Set(key, value, expiration interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Set", reflect.TypeOf((*MockStoreInterface)(nil).Set), key, value, expir)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Set", reflect.TypeOf((*MockStoreInterface)(nil).Set), key, value, expiration)
+}
+
+// SetNX mocks base method.
+func (m *MockStoreInterface) SetNX(key string, value interface{}, expiration time.Duration) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetNX", key, value, expiration)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// SetNX indicates an expected call of SetNX.
+func (mr *MockStoreInterfaceMockRecorder) SetNX(key, value, expiration interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNX", reflect.TypeOf((*MockStoreInterface)(nil).SetNX), key, value, expiration)
 }

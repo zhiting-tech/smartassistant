@@ -32,7 +32,7 @@
   import "github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/server"
   
   func main() {
-      ps := server.NewPluginServer("yeelight")
+      ps := server.NewPluginServer()
       ps.HtmlRouter.Static("", "./html")
   
       apiGroup := ps.Router.Group("/api/")
@@ -44,14 +44,26 @@
     ```proto
     syntax = "proto3";
     package proto;
-    
+    option go_package = "../proto";
+  
     service Plugin {
-        rpc Discover (empty) returns (stream device);
-        rpc StateChange (empty) returns (stream state);
-        rpc GetAttributes (GetAttributesReq) returns (GetAttributesResp);
-        rpc SetAttributes (SetAttributesReq) returns (SetAttributesResp);
+    // Discover 发现时设备
+    rpc Discover (empty) returns (stream device);
+    rpc StateChange (empty) returns (stream state);
+    rpc HealthCheck (healthCheckReq) returns (healthCheckResp);
+    // GetAttributes TODO 考虑删除该接口，仅通过Connect获取模型，并通过回调更新属性
+    rpc GetAttributes (GetAttributesReq) returns (GetAttributesResp);
+    rpc SetAttributes (SetAttributesReq) returns (SetAttributesResp);
+  
+    rpc Connect (AuthReq) returns (GetAttributesResp);
+    rpc Disconnect (AuthReq) returns (empty);
     }
-    
+  
+    message AuthReq {
+        string identity = 1;
+        map<string, string> params = 2;
+    }
+  
     message ExecuteReq {
         string identity = 1;
         string cmd = 2;
@@ -91,13 +103,14 @@
     message Action {
         string identity = 1;
         int32 instance_id = 2;
-        bytes attributes = 3;
+       bytes attributes = 3;
     }
     
     message device {
         string identity = 1;
         string model = 2;
         string manufacturer = 3;
+    bool authRequired = 4;
     }
     
     message empty {
@@ -107,6 +120,15 @@
         string identity = 1;
         int32 instance_id = 2;
         bytes attributes = 3;
+    }
+  
+    message healthCheckReq {
+    string identity = 1;
+    }
+  
+    message healthCheckResp {
+    string identity = 1;
+    bool online = 2;
     }
     ```
 
@@ -137,7 +159,7 @@ SDK预定义设备类型以及属性，开发者通过引入设备类型实现�
 
 SDK通过反射获取设备的所有属性，将属性与命令做好对应关系，这样可以使得无论设备是什么形态，都能有统一的接口以及命令进行控制。
 
-[模型定义](plugin-model.md)
+[模型定义](device-thing-model.md)
 
 操作某个属性时，根据属性的tag对命令中的值进行解析和校验 模型例子如下：
 

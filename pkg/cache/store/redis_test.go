@@ -39,6 +39,38 @@ func TestRedisGet(t *testing.T) {
 	assert.NotNil(t, value)
 }
 
+func TestRedisSetNX(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	cacheKey := "my-key"
+	cacheValue := "my-cache-value"
+
+	client := mocksStore.NewMockRedisClientInterface(ctrl)
+	client.EXPECT().SetNX(cacheKey, cacheValue, 10*time.Second).Return(redis.NewBoolResult(true, nil))
+
+	store := NewRedis(client, nil)
+
+	ok := store.SetNX(cacheKey, cacheValue, 10*time.Second)
+
+	assert.Equal(t, true, ok)
+}
+
+func TestRedisSetNXWhenExists(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	cacheKey := "my-key"
+	cacheValue := "my-cache-value"
+
+	client := mocksStore.NewMockRedisClientInterface(ctrl)
+	client.EXPECT().SetNX(cacheKey, cacheValue, 10*time.Second).Return(redis.NewBoolResult(false, nil))
+
+	store := NewRedis(client, nil)
+
+	ok := store.SetNX(cacheKey, cacheValue, 10*time.Second)
+
+	assert.Equal(t, false, ok)
+}
+
 func TestRedisSet(t *testing.T) {
 	ctrl := gomock.NewController(t)
 

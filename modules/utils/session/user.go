@@ -1,8 +1,6 @@
 package session
 
 import (
-	"encoding/gob"
-	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
@@ -31,22 +29,6 @@ func (u User) BelongsToArea(areaID uint64) bool {
 	return u.AreaID == areaID
 }
 
-func Login(c *gin.Context, user *User) {
-	s := GetSession(c)
-	s.Set(sessionName, user)
-	if err := s.Save(); err != nil {
-		fmt.Errorf("save session err: %s", err)
-	}
-}
-
-func Logout(c *gin.Context) {
-	s := GetSession(c)
-	s.Delete(sessionName)
-	if err := s.Save(); err != nil {
-		fmt.Errorf("save session err: %s", err)
-	}
-}
-
 // Get 根据token或cookie获取用户数据
 func Get(c *gin.Context) *User {
 	if u, exists := c.Get("userInfo"); exists {
@@ -54,24 +36,10 @@ func Get(c *gin.Context) *User {
 	}
 	var u *User
 	token := c.GetHeader(types.SATokenKey)
-	if token != "" {
-		u = GetUserByToken(c)
-	} else {
-		// token 为空，则检查cookie
-		s := GetSession(c)
-		user := s.Get(sessionName)
-		if user == nil {
-			return nil
-		}
-
-		u = user.(*User)
-		if u.UserID == 0 {
-			return nil
-		}
-		if time.Now().After(u.ExpiresAt) || time.Now().Before(u.LoginAt) {
-			return nil
-		}
+	if token == "" {
+		return nil
 	}
+	u = GetUserByToken(c)
 	c.Set("userInfo", u)
 	return u
 }
@@ -100,8 +68,4 @@ func GetUserByToken(c *gin.Context) *User {
 		Key:      user.Key,
 	}
 	return u
-}
-
-func init() {
-	gob.Register(&User{})
 }

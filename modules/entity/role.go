@@ -160,7 +160,7 @@ func (r *Role) AddPermissionsWithDB(db *gorm.DB, ps ...types.Permission) {
 
 	for _, p := range ps {
 		if err := r.addPermission(db, p); err != nil {
-			logger.Println(err)
+			logger.Error(err)
 			continue
 		}
 	}
@@ -233,4 +233,20 @@ func GetRolesByIds(roleIds []int) (roles []Role, err error) {
 // IsBelongsToUserArea 是否属于用户的家庭
 func (r Role) IsBelongsToUserArea(user User) bool {
 	return user.BelongsToArea(r.AreaID)
+}
+
+func GetRoleInfos(uID int) (roleInfos []RoleInfo, err error) {
+	roles, err := GetRolesByUid(uID)
+	if err != nil {
+		return
+	}
+
+	for _, role := range roles {
+		roleInfo := RoleInfo{
+			ID:   role.ID,
+			Name: role.Name,
+		}
+		roleInfos = append(roleInfos, roleInfo)
+	}
+	return
 }

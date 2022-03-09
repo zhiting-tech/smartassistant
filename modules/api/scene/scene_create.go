@@ -55,7 +55,6 @@ func CreateScene(c *gin.Context) {
 	if req.AutoRun {
 		task.GetManager().AddSceneTask(req.Scene)
 	}
-
 }
 
 func (req *CreateSceneReq) check(c *gin.Context) (err error) {
@@ -77,7 +76,7 @@ func (req *CreateSceneReq) validate(c *gin.Context) (err error) {
 		return
 	}
 
-	if err = entity.IsSceneNameExist(req.Name, req.ID); err != nil {
+	if err = entity.IsSceneNameExist(req.Name, req.ID, session.Get(c).AreaID); err != nil {
 		return
 	}
 
@@ -136,7 +135,7 @@ func (req *CreateSceneReq) validate(c *gin.Context) (err error) {
 	return
 }
 
-// checkSceneTasks 执行任务校验
+// CheckSceneTasks 执行任务校验
 func CheckSceneTasks(c *gin.Context, task entity.SceneTask) (err error) {
 	userId := session.Get(c).UserID
 	if err = task.CheckTaskType(); err != nil {

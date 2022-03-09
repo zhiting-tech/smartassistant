@@ -75,15 +75,15 @@ func GetBrandInfo(name string) (brand Brand, err error) {
 	brand.LogoURL = brandInfo.LogoURL
 	for _, p := range brandInfo.Plugins {
 		pp := Plugin{
-			ID:      p.Domain,
+			ID:      p.UID,
 			Name:    p.Name,
 			Version: p.Version,
 			Brand:   p.Brand,
 			Info:    p.Intro,
 		}
-		_, pp.IsAdded = installedPlgMap[p.Domain]
+		_, pp.IsAdded = installedPlgMap[p.UID]
 		if pp.IsAdded {
-			pp.IsNewest = p.Version == installedPlgMap[p.Domain].Version
+			pp.IsNewest = p.Version == installedPlgMap[p.UID].Version
 			brand.IsAdded = true
 		}
 		brand.Plugins = append(brand.Plugins, pp)

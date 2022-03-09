@@ -41,6 +41,7 @@ type TaskLog struct {
 	Error  string
 
 	DeviceLocation string // 设备区域
+	DeviceDepartment string // 设备部门
 
 	TaskID        string    `gorm:"unique"` // 任务ID
 	ParentTaskID  *string   // 父任务id
@@ -132,7 +133,8 @@ func NewTaskLog(target interface{}, taskID string, parentTaskID *string) error {
 	var (
 		name     string
 		taskType TaskType
-		location Location
+		location  Location
+		department Department
 		areaID   uint64
 	)
 	switch v := target.(type) {
@@ -146,12 +148,14 @@ func NewTaskLog(target interface{}, taskID string, parentTaskID *string) error {
 	case Device:
 		name = v.Name
 		location, _ = GetLocationByID(v.LocationID)
+		department, _ = GetDepartmentByID(v.DepartmentID)
 		taskType = TaskTypeSmartDevice
 		areaID = v.AreaID
 	}
 	taskLog := TaskLog{
 		Name:           name,
 		DeviceLocation: location.Name,
+		DeviceDepartment: department.Name,
 		Type:           taskType,
 		TaskID:         taskID,
 		ParentTaskID:   parentTaskID,

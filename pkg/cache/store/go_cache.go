@@ -12,6 +12,7 @@ type GoCacheClientInterface interface {
 	GetWithExpiration(k string) (interface{}, time.Time, bool)
 	Set(k string, x interface{}, d time.Duration)
 	Delete(k string)
+	Add(k string, x interface{}, d time.Duration) error
 	Flush()
 }
 
@@ -31,10 +32,9 @@ func NewGoCache(client GoCacheClientInterface, options *Options) *GoCacheStore {
 	}
 }
 
-func (s *GoCacheStore) Get(key interface{}) (interface{}, error) {
+func (s *GoCacheStore) Get(key string) (interface{}, error) {
 	var err error
-	keyStr := key.(string)
-	value, exists := s.client.Get(keyStr)
+	value, exists := s.client.Get(key)
 	if !exists {
 		err = ErrValueNotFound
 	}
@@ -42,8 +42,8 @@ func (s *GoCacheStore) Get(key interface{}) (interface{}, error) {
 	return value, err
 }
 
-func (s *GoCacheStore) GetWithTTL(key interface{}) (interface{}, time.Duration, error) {
-	data, t, exists := s.client.GetWithExpiration(key.(string))
+func (s *GoCacheStore) GetWithTTL(key string) (interface{}, time.Duration, error) {
+	data, t, exists := s.client.GetWithExpiration(key)
 	if !exists {
 		return data, 0, ErrValueNotFound
 	}
@@ -51,17 +51,28 @@ func (s *GoCacheStore) GetWithTTL(key interface{}) (interface{}, time.Duration, 
 	return data, duration, nil
 }
 
-func (s *GoCacheStore) Set(key interface{}, value interface{}, expiration time.Duration) error {
+func (s *GoCacheStore) Set(key string, value interface{}, expiration time.Duration) error {
 	if expiration == 0 {
 		expiration = s.options.Expiration
 	}
-	s.client.Set(key.(string), value, expiration)
+	s.client.Set(key, value, expiration)
 	return nil
 }
 
-func (s *GoCacheStore) Delete(key interface{}) error {
-	s.client.Delete(key.(string))
+func (s *GoCacheStore) Delete(key string) error {
+	s.client.Delete(key)
 	return nil
+}
+
+func (s *GoCacheStore) SetNX(key string, value interface{}, expiration time.Duration) bool {
+	if expiration == 0 {
+		expiration = s.options.Expiration
+	}
+	err := s.client.Add(key, value, expiration)
+	if err != nil {
+		return false
+	}
+	return true
 }
 
 func (s *GoCacheStore) Clear() error {

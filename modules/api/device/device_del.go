@@ -1,9 +1,13 @@
 package device
 
 import (
-	"github.com/zhiting-tech/smartassistant/modules/device"
-	"github.com/zhiting-tech/smartassistant/modules/plugin"
 	"strconv"
+
+	"github.com/zhiting-tech/smartassistant/modules/device"
+	"github.com/zhiting-tech/smartassistant/modules/entity"
+	"github.com/zhiting-tech/smartassistant/modules/event"
+	"github.com/zhiting-tech/smartassistant/modules/plugin"
+	"github.com/zhiting-tech/smartassistant/modules/utils/session"
 
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/types"
@@ -11,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/zhiting-tech/smartassistant/pkg/analytics"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 )
 
@@ -35,10 +40,20 @@ func DelDevice(c *gin.Context) {
 		err = errors.Wrap(err, status.Deny)
 		return
 	}
+	// TODO：考虑优化，plugin.RemoveDevice也会查询一次
+	device, err := entity.GetDeviceByID(deviceId)
+	if err != nil {
+		err = errors.Wrap(err, errors.InternalServerErr)
+		return
+	}
 	if err = plugin.RemoveDevice(deviceId); err != nil {
 		err = errors.Wrap(err, errors.InternalServerErr)
 		return
 	}
-	return
 
+	event.GetServer().Notify(event.NewEventMessage(event.DeviceDecrease, session.Get(c).AreaID))
+	uid := session.Get(c).UserID
+	go analytics.RecordStruct(analytics.EventTypeDeviceDelete, uid, device)
+
+	return
 }

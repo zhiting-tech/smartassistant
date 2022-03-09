@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -22,12 +23,23 @@ func endpointsTarget(service string) string {
 }
 
 // RegisterService 注册服务
-func RegisterService(ctx context.Context, service, addr string) (err error) {
+func RegisterService(ctx context.Context, service, addr string) {
 	logrus.Infoln("register service:", service, addr)
 	cli, err := clientv3.NewFromURL(etcdURL)
 	if err != nil {
+		logrus.Errorf("new etcd client err: %s", err.Error())
 		return
 	}
+	defer cli.Close()
+	for {
+		if err = register(ctx, cli, service, addr); err != nil {
+			logrus.Errorf("register service err: %s", err.Error())
+		}
+		time.Sleep(time.Second)
+	}
+}
+
+func register(ctx context.Context, cli *clientv3.Client, service, addr string) (err error) {
 	em, err := endpoints.NewManager(cli, managerTarget)
 	if err != nil {
 		return
@@ -42,23 +54,25 @@ func RegisterService(ctx context.Context, service, addr string) (err error) {
 	if err != nil {
 		return
 	}
-	go func() {
-		for {
-			if _, ok := <-kl; !ok {
-				return
-			}
-		}
-	}()
 
-	return em.AddEndpoint(ctx,
+	err = em.AddEndpoint(ctx,
 		endpointsTarget(service),
 		endpoints.Endpoint{Addr: addr},
 		clientv3.WithLease(resp.ID),
 	)
+	if err != nil {
+		return
+	}
+	for {
+		if _, ok := <-kl; !ok {
+			time.Sleep(time.Second)
+			return register(ctx, cli, service, addr)
+		}
+	}
 }
 
 // UnregisterService 取消注册服务
-func UnregisterService(service string) (err error) {
+func UnregisterService(ctx context.Context, service string) (err error) {
 	logrus.Infoln("unregister service:", service)
 	cli, err := clientv3.NewFromURL(etcdURL)
 	if err != nil {
@@ -69,5 +83,5 @@ func UnregisterService(service string) (err error) {
 		return
 	}
 
-	return em.DeleteEndpoint(context.TODO(), endpointsTarget(service))
+	return em.DeleteEndpoint(ctx, endpointsTarget(service))
 }

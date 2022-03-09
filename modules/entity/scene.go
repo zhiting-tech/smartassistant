@@ -62,6 +62,8 @@ type Scene struct {
 
 	AreaID uint64 `gorm:"type:bigint;index"`
 	Area   Area   `gorm:"constraint:OnDelete:CASCADE;"`
+
+	Version int `json:"-" gorm:"column:version;default:1;NOT NULL"`
 }
 
 func (s Scene) TableName() string {
@@ -85,6 +87,16 @@ func (s *Scene) BeforeSave(tx *gorm.DB) (err error) {
 	}
 
 	return nil
+}
+
+// HaveTimeCondition 场景是否有定时条件
+func (s Scene) HaveTimeCondition() bool {
+	for _, c := range s.SceneConditions {
+		if c.ConditionType == ConditionTypeTiming {
+			return true
+		}
+	}
+	return false
 }
 
 func (s Scene) IsMatchAllCondition() bool {
@@ -129,12 +141,12 @@ func GetSceneByIDWithUnscoped(id int) (scene Scene, err error) {
 	return
 }
 
-func IsSceneNameExist(name string, sceneId int) (err error) {
+func IsSceneNameExist(name string, sceneId int, areaId uint64) (err error) {
 	var db *gorm.DB
 	if sceneId != 0 {
-		db = GetDB().Where("id != ? and name = ?", sceneId, name)
+		db = GetDB().Where("id != ? and name = ? and area_id = ?", sceneId, name, areaId)
 	} else {
-		db = GetDB().Where("name = ?", name)
+		db = GetDB().Where("name = ? and area_id = ?", name, areaId)
 	}
 
 	err = db.First(&Scene{}).Error
@@ -245,5 +257,15 @@ func GetPendingScenesByTime(t time.Time) (scenes []Scene, err error) {
 		err = errors.Wrap(err, errors.InternalServerErr)
 		return
 	}
+	return
+}
+
+// UpdateSceneByIDWithTx 根据SceneID更新场景
+func UpdateSceneByIDWithTx(sceneID int, update *Scene, tx *gorm.DB) (err error) {
+	// 用户编辑场景时更新场景版本, 旧版本场景触发的场景任务不执行
+	if err = tx.Omit("version", "area_id").Where("id=?", sceneID).Updates(update).Error; err != nil {
+		return
+	}
+	err = tx.Model(&Scene{}).Where("id=?", sceneID).UpdateColumn("version", gorm.Expr("version+1")).Error
 	return
 }

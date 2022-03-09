@@ -1,33 +1,9 @@
-debug: true
-smartcloud:
-    domain: ""
-    tls: false
-    grpc_port: 6666
-    data_center_id: 1
-    work_id: 2
-
 smartassistant:
-    id: "demo-sa"
+    id: "620100000001"
     key: "aGVsbG93b3JsZA"
-    # runtime_path 为 smartassistant 容器中运行时目录
-    runtime_path: "/mnt/data/zt-smartassistant"
-    host_runtime_path: "/mnt/data/zt-smartassistant"
-    database:
-        driver: sqlite
-        name: "./data/sadb.db"
-        username:
-        password:
-        host:
-        port:
-    host: 0.0.0.0
-    port: 37965
-    grpc_port: 9234
-
-docker:
-    server: ""
-    username: ""
-    password: ""
 
 datatunnel:
     export_services:
-        http: 8088 # 指定端口8088或者127.0.0.1:8088
+        http: "127.0.0.1:37965" # smartassistant的http服务端口, 只填写端口时默认为127.0.0.1:[端口]
+
+

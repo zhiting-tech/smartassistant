@@ -5,6 +5,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/zhiting-tech/smartassistant/modules/device"
 	"github.com/zhiting-tech/smartassistant/modules/types"
+	"github.com/zhiting-tech/smartassistant/modules/utils/session"
 	"strconv"
 	"strings"
 
@@ -78,6 +79,10 @@ func UserPermissions(c *gin.Context) {
 		return
 	}
 
+	curArea, err := entity.GetAreaByID(session.Get(c).AreaID)
+	if err != nil {
+		return
+	}
 	var ps Permissions
 	ps, err = getPermissions()
 	if err != nil {
@@ -94,8 +99,20 @@ func UserPermissions(c *gin.Context) {
 			resp.wrap(vv.Permissions, up)
 		}
 	}
-	resp.wrap(ps.Area, up)
-	resp.wrap(ps.Location, up)
+
+	for _, v := range ps.DeviceAdvanced.Departments {
+		for _, vv := range v.Devices {
+			resp.wrap(vv.Permissions, up)
+		}
+	}
+
+	if entity.IsHome(curArea.AreaType) {
+		resp.wrap(ps.Area, up)
+		resp.wrap(ps.Location, up)
+	}else {
+		resp.wrap(ps.Company, up)
+		resp.wrap(ps.Department, up)
+	}
 	resp.wrap(ps.Role, up)
 	resp.wrap(ps.Scene, up)
 	resp.checkSAUpgragePermission(up)

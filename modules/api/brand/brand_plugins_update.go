@@ -4,6 +4,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/plugin"
+	"github.com/zhiting-tech/smartassistant/modules/utils/session"
+	"github.com/zhiting-tech/smartassistant/pkg/analytics"
 )
 
 type handlePluginsReq struct {
@@ -65,7 +67,7 @@ func UpdatePlugin(c *gin.Context) {
 	if err != nil {
 		return
 	}
-
+	user := session.Get(c)
 	for _, plg := range plgs {
 		if plg.Brand != req.BrandName {
 			continue
@@ -73,6 +75,7 @@ func UpdatePlugin(c *gin.Context) {
 		if err = plg.UpdateOrInstall(); err != nil {
 			return
 		}
+		go analytics.RecordStruct(analytics.EventTypePluginAdd, user.UserID, plg)
 		resp.SuccessPlugins = append(resp.SuccessPlugins, plg.ID)
 	}
 	return

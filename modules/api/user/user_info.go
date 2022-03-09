@@ -19,6 +19,7 @@ type userInfoResp struct {
 	IsOwner bool      `json:"is_owner"`
 	IsSelf  bool      `json:"is_self"`
 	Area    area.Area `json:"area"`
+	DepartmentInfos []entity.DepartmentInfo `json:"department_infos,omitempty"`   // 所在部门
 }
 
 // InfoUser 用于处理用户详情接口的请求
@@ -29,6 +30,7 @@ func InfoUser(c *gin.Context) {
 		user        entity.User
 		userID      int
 		sessionUser *session.User
+		curArea 		entity.Area
 	)
 
 	defer func() {
@@ -55,13 +57,20 @@ func InfoUser(c *gin.Context) {
 		return
 	}
 
+	if curArea, err = entity.GetAreaByID(user.AreaID); err != nil {
+		return
+	}
+
 	resp.IsOwner = entity.IsOwner(userID)
 
 	resp.IsSelf = userID == sessionUser.UserID
 	resp.UserInfo, err = WrapUserInfo(user, resp.IsOwner)
 	resp.AccountName = user.AccountName
+	resp.Area, err = GetArea(curArea)
 
-	resp.Area, err = GetArea(user.AreaID)
+	if curArea.AreaType == entity.AreaOfCompany {
+		resp.DepartmentInfos, err = entity.GetDepartmentsByUser(user)
+	}
 
 	return
 }
@@ -74,38 +83,18 @@ func WrapUserInfo(user entity.User, isOwner bool) (infoUser entity.UserInfo, err
 	if isOwner {
 		infoUser.RoleInfos = []entity.RoleInfo{{ID: entity.OwnerRoleID, Name: entity.Owner}}
 	} else {
-		infoUser.RoleInfos, err = GetRoleInfo(user.ID)
-	}
-	return
-}
-
-func GetRoleInfo(uID int) (roleInfos []entity.RoleInfo, err error) {
-
-	roles, err := entity.GetRolesByUid(uID)
-	if err != nil {
-		return
-	}
-
-	for _, role := range roles {
-		roleInfo := entity.RoleInfo{
-			ID:   role.ID,
-			Name: role.Name,
-		}
-		roleInfos = append(roleInfos, roleInfo)
+		infoUser.RoleInfos, err = entity.GetRoleInfos(user.ID)
 	}
 	return
 }
 
 // GetArea 获取家庭信息
-func GetArea(areaID uint64) (areaInfo area.Area, err error) {
-	info, err := entity.GetAreaByID(areaID)
-	if err != nil {
-		return
-	}
-
+func GetArea(info entity.Area) (areaInfo area.Area, err error) {
 	areaInfo = area.Area{
 		Name: info.Name,
 		ID:   strconv.FormatUint(info.ID, 10),
+		AreaType: info.AreaType,
+		IsBindCloud: info.IsBindCloud,
 	}
 	return
 }

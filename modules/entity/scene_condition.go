@@ -2,6 +2,7 @@ package entity
 
 import (
 	"encoding/json"
+	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/attribute"
 	"time"
 
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
@@ -118,6 +119,12 @@ func (d SceneCondition) CheckConditionItem(userId, deviceId int) (err error) {
 		return
 	}
 
+	// 如果设备的属性是只读，例如传感器，则默认有权限（这种属性，不需要权限控制）
+	// TODO 这里信任了前端给予的数据，后期需要做调整
+	if item.Permission == attribute.AttrPermissionOnlyRead {
+		return
+	}
+
 	// 设备控制权限的判断
 	if !IsDeviceControlPermit(userId, deviceId, item) {
 		err = errors.New(status.DeviceOrSceneControlDeny)
@@ -164,14 +171,32 @@ func GetScenesByCondition(deviceID int, attr Attribute) (scenes []Scene, err err
 // GetConditions 获取符合设备属性的条件
 func GetConditions(deviceID int, attr Attribute) (conds []SceneCondition, err error) {
 
+	var (
+		deviceConds []SceneCondition
+	)
+
 	attrQuery := datatypes.JSONQuery("condition_attr").
 		Equals(attr.Attribute.Attribute, "attribute")
 	instanceIDQuery := datatypes.JSONQuery("condition_attr").
 		Equals(attr.InstanceID, "instance_id")
 
 	if err = GetDB().Where("device_id=?", deviceID).
-		Find(&conds, attrQuery, instanceIDQuery).Error; err != nil {
+		Find(&deviceConds, attrQuery, instanceIDQuery).Error; err != nil {
 		return
+	}
+	for _, cond := range deviceConds {
+		if cond.ConditionType == ConditionTypeTiming {
+			continue
+		}
+
+		var item Attribute
+		if err := json.Unmarshal(cond.ConditionAttr, &item); err != nil {
+			continue
+		}
+
+		if item.Operate(cond.Operator, attr.Val) {
+			conds = append(conds, cond)
+		}
 	}
 	return
 }
@@ -179,4 +204,31 @@ func GetConditions(deviceID int, attr Attribute) (conds []SceneCondition, err er
 type Attribute struct {
 	server.Attribute
 	InstanceID int `json:"instance_id"`
+}
+
+func (attr *Attribute) Operate(operatorType OperatorType, val interface{}) bool {
+	switch operatorType {
+	case OperatorEQ:
+		return val == attr.Val
+	case OperatorGT:
+		switch val.(type) {
+		case int:
+			return val.(int) > attr.Val.(int)
+		case float64:
+			return val.(float64) > attr.Val.(float64)
+		default:
+			return false
+		}
+	case OperatorLT:
+		switch val.(type) {
+		case int:
+			return val.(int) < attr.Val.(int)
+		case float64:
+			return val.(float64) < attr.Val.(float64)
+		default:
+			return false
+		}
+	}
+
+	return false
 }

@@ -78,16 +78,13 @@ func CheckRoleID(roleID int) (err error) {
 }
 
 func checkAccountNameFormat(accountName string) bool {
-
-	namePattern := `^[\w]+$`
-	allNumPattern := `^[\d]+$`
-	nameReg := regexp.MustCompile(namePattern)
-	allNumReg := regexp.MustCompile(allNumPattern)
-	return nameReg.MatchString(accountName) && !allNumReg.MatchString(accountName)
+	pattern := `^[\x21-\x7e]{1,}$` // 字母和数字和符号的组合 且不小于1位
+	reg := regexp.MustCompile(pattern)
+	return reg.MatchString(accountName)
 }
 
 func checkPasswordFormat(password string) bool {
-	pattern := `^[\x21-\x7e]{6,}$` // 字母和数字和符号的组合 大于六位
+	pattern := `^[\x21-\x7e]{6,}$` // 字母和数字和符号的组合 且不小于6位
 	reg := regexp.MustCompile(pattern)
 	return reg.MatchString(password)
 }

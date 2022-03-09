@@ -1,9 +1,13 @@
 package attribute
 
 import (
-	"errors"
-
 	"github.com/sirupsen/logrus"
+)
+
+const (
+	AttrPermissionALLControl = iota // 0：可控制可读(例如灯光控制属性)
+	AttrPermissionOnlyRead          // 1：不可控制但是可读(例如：传感器状态属性)
+	AttrPermissionNone              // 2：不可控制不可读(其他属性)
 )
 
 type UpdateFunc func(val interface{}) error
@@ -12,31 +16,32 @@ type NotifyFunc func(val interface{}) error
 type Setter interface {
 	Set(val interface{}) error
 }
+
 type Notifier interface {
 	Notify(val interface{}) error
 	SetNotifyFunc(NotifyFunc)
 }
 
-type IntType interface {
-	GetRange() (*int, *int)
-	SetRange(int, int)
-	GetInt() int
-	SetInt(int)
+// HomekitCharacteristic homekit的特征属性
+type HomekitCharacteristic interface {
+	SetAid(aid uint64)
+	GetAid() uint64
+	SetIid(iid uint64)
+	GetIid() uint64
 }
 
-type StringType interface {
-	GetString() string
-	SetString(string)
-}
-
-type BoolType interface {
-	GetBool() bool
-	SetBool(bool)
+// AttrPermission 属性状态接口
+type AttrPermission interface {
+	SetPermission(permission uint)
+	GetPermission() uint
 }
 
 type Base struct {
 	updateFn   UpdateFunc
 	notifyFunc NotifyFunc
+	Permission uint   // 属性状态： 0可控制可读(灯光控制属性)，1不可控制但是可读(传感器状态)，2不可控制不可读(其他属性)
+	aid        uint64 // homekit: Accessory Instance ID 设备ID
+	iid        uint64 // homekit: Instance ID 特征ID
 }
 
 // SetUpdateFunc 设置属性更新函数
@@ -46,17 +51,26 @@ func (b *Base) SetUpdateFunc(fn UpdateFunc) {
 
 // Set 触发Base.updateFn，更新设备属性
 func (b *Base) Set(val interface{}) error {
+	defer func() {
+		if err := recover(); err != nil {
+			logrus.Error("set err:", err)
+		}
+	}()
+
 	if b.updateFn != nil {
 		return b.updateFn(val)
 	}
+
 	logrus.Warn("update func not set")
+
 	return nil
-	return errors.New("update func not set")
 }
 
 // SetNotifyFunc  设置通知函数
 func (b *Base) SetNotifyFunc(fn NotifyFunc) {
-	b.notifyFunc = fn
+	if b.notifyFunc == nil {
+		b.notifyFunc = fn
+	}
 }
 
 // Notify 触发Base.notifyFn,通过channel通知SA
@@ -64,92 +78,36 @@ func (b *Base) Notify(val interface{}) error {
 	if b.notifyFunc != nil {
 		return b.notifyFunc(val)
 	}
+
 	logrus.Warn("notify func not set")
+
 	return nil
-	return errors.New("update func not set")
 }
 
-type Int struct {
-	Base
-	min, max *int
-	v        int
+func (b *Base) SetAid(aid uint64) {
+	b.aid = aid
 }
 
-func (i *Int) SetRange(min, max int) {
-	if min > max {
-		return
-	}
-	i.min = &min
-	i.max = &max
+func (b *Base) GetAid() uint64 {
+	return b.aid
 }
 
-func (i *Int) GetRange() (min, max *int) {
-	return i.min, i.max
+func (b *Base) SetIid(iid uint64) {
+	b.iid = iid
 }
 
-func (i *Int) SetInt(v int) {
-	i.v = v
+func (b *Base) GetIid() uint64 {
+	return b.iid
 }
 
-func (i *Int) GetInt() int {
-	return i.v
+func (b *Base) SetPermission(permission uint) {
+	b.Permission = permission
 }
 
-type Bool struct {
-	Base
-	v bool
+func (b *Base) GetPermission() uint {
+	return b.Permission
 }
 
-func (b *Bool) SetBool(v bool) {
-	b.v = v
-}
-
-func (b *Bool) GetBool() bool {
-	return b.v
-}
-
-type String struct {
-	Base
-	v           string
-	validValues map[string]interface{}
-}
-
-type Enum struct {
-	Base
-	v     int
-	enums map[int]struct{}
-}
-
-func (e *Enum) SetEnums(enums ...int) {
-	if e.enums == nil {
-		e.enums = make(map[int]struct{})
-	}
-	for i := range enums {
-		e.enums[i] = struct{}{}
-	}
-}
-
-func (e *Enum) GetEnum() int {
-	return e.v
-}
-
-func (e *Enum) SetEnum(enum int) {
-	e.v = enum
-}
-
-func (s *String) SetString(v string) {
-	if len(s.validValues) != 0 {
-		if _, ok := s.validValues[v]; !ok {
-			logrus.Warning("invalid string value: ", v)
-			// TODO return error
-			return
-		}
-	}
-	s.v = v
-}
-func (s String) GetString() string {
-	return s.v
-}
 func StringWithValidValues(values ...string) String {
 	s := String{}
 	if len(s.validValues) == 0 {
@@ -160,9 +118,10 @@ func StringWithValidValues(values ...string) String {
 	}
 	return s
 }
+
 func TypeOf(iface interface{}) string {
 	switch iface.(type) {
-	case IntType:
+	case IntType, EnumType:
 		return "int"
 	case BoolType:
 		return "bool"
@@ -180,6 +139,8 @@ func ValueOf(iface interface{}) interface{} {
 		return v.GetBool()
 	case StringType:
 		return v.GetString()
+	case EnumType:
+		return v.GetEnum()
 	}
 	return ""
 }

@@ -4,14 +4,15 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 	"github.com/zhiting-tech/smartassistant/pkg/archive"
 	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/proto"
-	"log"
 	"math/rand"
 	"os"
+	"time"
 )
 
 type Server struct {
@@ -24,12 +25,44 @@ type Server struct {
 	staticDir    string
 }
 
-func (p Server) HealthCheck(context context.Context, req *proto.HealthCheckReq) (resp *proto.HealthCheckResp, err error) {
-	logrus.Debugf("%s HealthCheck", req.Identity)
+func (p Server) OTA(req *proto.OTAReq, server proto.Plugin_OTAServer) error {
+	logrus.Debugf("%s OTA with firmware url %s", req.Identity, req.FirmwareUrl)
+	ch, err := p.Manager.OTA(req.Identity, req.FirmwareUrl)
+	if err != nil {
+		return err
+	}
 
+	timeout := time.NewTimer(time.Minute * 10)
+
+	for {
+		select {
+		case <-timeout.C:
+			return errors.New("OTA timeout")
+		case v, ok := <-ch:
+			if !ok {
+				return nil
+			}
+			resp := proto.OTAResp{
+				Identity: req.Identity,
+				Step:     int32(v.Step),
+			}
+			if err = server.Send(&resp); err != nil {
+				logrus.Errorf("send ota response error: %s", err.Error())
+			}
+			if v.Step == OTAFinish {
+				return nil
+			}
+		}
+	}
+}
+
+func (p Server) HealthCheck(context context.Context, req *proto.HealthCheckReq) (resp *proto.HealthCheckResp, err error) {
+
+	online := p.Manager.HealthCheck(req.Identity)
+	logrus.Debugf("%s HealthCheck,online: %v", req.Identity, online)
 	resp = &proto.HealthCheckResp{
 		Identity: req.Identity,
-		Online:   p.Manager.HealthCheck(req.Identity),
+		Online:   online,
 	}
 	return
 }
@@ -54,8 +87,10 @@ func (p Server) Connect(ctx context.Context, req *proto.AuthReq) (resp *proto.Ge
 		return
 	}
 
-	getAttrsReq := proto.GetAttributesReq{Identity: req.Identity}
-	return p.GetAttributes(ctx, &getAttrsReq)
+	// getAttrsReq := proto.GetAttributesReq{Identity: req.Identity}
+	// return p.GetAttributes(ctx, &getAttrsReq)
+
+	return &proto.GetAttributesResp{}, nil
 }
 
 func (p Server) Disconnect(ctx context.Context, req *proto.AuthReq) (resp *proto.Empty, err error) {
@@ -87,23 +122,12 @@ func (p Server) GetAttributes(context context.Context, request *proto.GetAttribu
 		}
 		resp.Instances = append(resp.Instances, &ins)
 	}
-	log.Println("instances resp:", resp)
+	resp.OtaSupport, err = p.Manager.IsOTASupport(request.Identity)
+	if err != nil {
+		return
+	}
+	logrus.Println("instances resp:", resp)
 	return
-}
-
-type Attribute struct {
-	ID        int         `json:"id"`
-	Attribute string      `json:"attribute"`
-	Val       interface{} `json:"val"`
-	ValType   string      `json:"val_type"`
-	Min       *int        `json:"min,omitempty"`
-	Max       *int        `json:"max,omitempty"`
-}
-
-type Instance struct {
-	Type       string      `json:"type"`
-	InstanceId int         `json:"instance_id"`
-	Attributes []Attribute `json:"attributes"`
 }
 
 type SetAttribute struct {
@@ -136,7 +160,7 @@ func (p Server) SetAttributes(context context.Context, request *proto.SetAttribu
 	return
 }
 func (p Server) StateChange(request *proto.Empty, server proto.Plugin_StateChangeServer) error {
-	log.Println("stateChange requesting...")
+	logrus.Println("stateChange requesting...")
 
 	nc := make(chan Notify, 20)
 
@@ -152,7 +176,7 @@ func (p Server) StateChange(request *proto.Empty, server proto.Plugin_StateChang
 			s.Identity = n.Identity
 			s.InstanceId = int32(n.InstanceID)
 			s.Attributes, _ = json.Marshal(n.Attribute)
-			log.Printf("notification:%#v\n", s)
+			logrus.Debugf("notification:%s\n", s.Attributes)
 			server.Send(&s)
 		}
 	}
@@ -180,9 +204,9 @@ func Exist(name string) bool {
 	if err == nil {
 		return true
 	}
-	//if errors.Is(err, os.ErrNotExist) {
+	// if errors.Is(err, os.ErrNotExist) {
 	//	return false, nil
-	//}
+	// }
 	return false
 }
 
@@ -211,6 +235,7 @@ func NewPluginServer(opts ...OptionFunc) *Server {
 	domain := os.Getenv("PLUGIN_DOMAIN")
 	if domain == "" {
 		bytes := make([]byte, 4)
+		rand.Seed(time.Now().UnixNano())
 		rand.Read(bytes)
 		domain = hex.EncodeToString(bytes)
 	}

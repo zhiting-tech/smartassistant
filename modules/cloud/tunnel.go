@@ -9,39 +9,14 @@ import (
 	"github.com/zhiting-tech/smartassistant/modules/config"
 	"github.com/zhiting-tech/smartassistant/pkg/datatunnel/proto"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
-	"github.com/zhiting-tech/smartassistant/pkg/proxy"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 )
 
-func StartTunnel(ctx context.Context) {
-	conf := config.GetConf()
-	upstreamMap := map[string]string{
-		conf.SmartCloud.Domain: conf.SmartAssistant.HttpAddress(),
-	}
-	remote := fmt.Sprintf("%s/tunnel", conf.SmartCloud.WebsocketURL())
-
-	inletsClient := proxy.Client{
-		Remote:      remote,
-		UpstreamMap: upstreamMap,
-		Token:       conf.SmartAssistant.Key,
-	}
-
-	saID := conf.SmartAssistant.ID
-	sleepTime := 2
-	for {
-		if err := inletsClient.Connect(ctx, saID); err != nil {
-			logger.Warning("inletsClient connect err:", err)
-			sleepTime = sleepTime * 2
-			if sleepTime > 600 {
-				sleepTime = 600
-			}
-		} else {
-			sleepTime = 2
-		}
-		time.Sleep(time.Duration(sleepTime) * time.Second)
-		logger.Info("try reconnect...")
-	}
-}
+const (
+	DefaultGrpcIdleTime       = 10 * time.Second
+	DefaultGrpcPingAckTimeout = 20 * time.Second
+)
 
 func StartDataTunnel(ctx context.Context) {
 	var level string
@@ -55,7 +30,13 @@ func StartDataTunnel(ctx context.Context) {
 
 	sleepTime := 2
 	target := fmt.Sprintf("%s:%d", hostname, conf.SmartCloud.GRPCPort)
-	conn, err := grpc.Dial(target, grpc.WithInsecure())
+	// 空闲时间10秒则发送ping,发送ping后20秒内收不到ack视为断开连接
+	kacp := keepalive.ClientParameters{
+		Time:                DefaultGrpcIdleTime,
+		Timeout:             DefaultGrpcPingAckTimeout,
+		PermitWithoutStream: true,
+	}
+	conn, err := grpc.Dial(target, grpc.WithInsecure(), grpc.WithKeepaliveParams(kacp))
 	if err != nil {
 		logger.Warning("grpc connect err:", err)
 		return

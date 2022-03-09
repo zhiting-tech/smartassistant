@@ -20,6 +20,8 @@ type areaListResp struct {
 type Area struct {
 	Name string `json:"name,omitempty"` // 家庭名称
 	ID   string `json:"id"`             // 家庭ID
+	AreaType entity.AreaType	`json:"area_type,omitempty"`			// 该区域类型
+	IsBindCloud bool `json:"is_bind_cloud,omitempty"`  // 是否绑定云端sa
 }
 
 // ListArea 用于处理家庭列表接口的请求

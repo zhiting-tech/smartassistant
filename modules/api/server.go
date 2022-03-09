@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/zhiting-tech/smartassistant/modules/websocket"
 	"net/http"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+
+	"github.com/zhiting-tech/smartassistant/modules/websocket"
 
 	"github.com/gin-gonic/gin"
 	"github.com/zhiting-tech/smartassistant/modules/api/middleware"
@@ -24,8 +27,7 @@ func NewHttpServer(ws gin.HandlerFunc) *HttpServer {
 	r := gin.Default()
 
 	// 记录请求日志
-	r.Use(middleware.AccessLog())
-
+	r.Use(otelgin.Middleware("api"), middleware.AccessLog())
 	apiGroup := r.Group("api")
 	// 注册websocket命令
 	websocket.RegisterCmd()
@@ -33,11 +35,8 @@ func NewHttpServer(ws gin.HandlerFunc) *HttpServer {
 	loadModules(apiGroup)
 	apiGroup.Static(fmt.Sprintf("static/%s/sa", conf.SmartAssistant.ID), "./static")
 
-	// 插件地址
-	apiGroup.Any("/plugin/:plugin/*path", middleware.RequireAccount, middleware.WithScope("user"), middleware.ProxyToPlugin)
-
-	// 插件静态文件
-	apiGroup.Any(fmt.Sprintf("static/%s/plugin/:plugin/*path", conf.SmartAssistant.ID), middleware.ProxyToPlugin)
+	// 代理插件
+	apiGroup.Any("/plugin/:plugin/*path", middleware.ProxyToPlugin)
 
 	return &HttpServer{
 		ginEngine: r,

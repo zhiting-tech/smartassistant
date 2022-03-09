@@ -2,19 +2,17 @@ package entity
 
 import (
 	errors2 "errors"
-	"time"
-
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/modules/utils/hash"
-
-	"github.com/zhiting-tech/smartassistant/pkg/rand"
-
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
+	"github.com/zhiting-tech/smartassistant/pkg/rand"
 	"gorm.io/gorm"
+	"time"
 )
 
 type User struct {
-	ID          int       `json:"id"`
+	// 使用自定义tag 配合 ./sqlite.go下的DataTypeOf() 和CreateTable()确保能给字段加上autoIncrement标签
+	ID          int       `json:"id" gorm:"sqliteType:integer PRIMARY KEY AUTOINCREMENT"`
 	AccountName string    `json:"account_name"`
 	Nickname    string    `json:"nickname"`
 	Phone       string    `json:"phone"`
@@ -25,6 +23,7 @@ type User struct {
 
 	AreaID  uint64 `gorm:"type:bigint;index"`
 	Area    Area   `gorm:"constraint:OnDelete:CASCADE;"`
+	PasswordUpdateTime   time.Time
 	Deleted gorm.DeletedAt
 }
 
@@ -123,6 +122,12 @@ func IsAccountNameExist(accountName string) bool {
 
 func (u User) BeforeDelete(tx *gorm.DB) (err error) {
 	if err = DelUserRoleByUid(u.ID, tx); err != nil {
+		return
+	}
+	if err = DelDepartmentUserByUId(u.ID, tx); err != nil {
+		return
+	}
+	if err = UnbindDepartmentManager(u.ID, u.AreaID, tx); err != nil {
 		return
 	}
 	return

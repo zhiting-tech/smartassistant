@@ -1,0 +1,93 @@
+syntax = "proto3";
+package proto;
+option go_package = "./";
+
+service Extension {
+  // 获取用户数据
+  rpc GetUserInfo(GetAreaInfoReq) returns (GetUserInfoResp);
+  // 获取部门下所有成员
+  rpc GetDepartmentUsers(GetDepartmentUsersReq) returns (GetDepartmentUsersResp);
+  // 获取人员基础数据
+  rpc GetBaseUserInfos(BaseUserInfosReq) returns(DepartmentUsers);
+  // Sa通知事件
+  rpc SANotifyEvent(emptyReq) returns (stream SAEventInfo);
+}
+
+enum CompanyRole {
+  unknown_role = 0;
+  manager_role = 1;     // 主管
+  member_role = 2;     // 普通成员
+}
+
+enum SAEvent {
+  unknown_ev = 0;
+  del_department_ev = 1;  // 删除部门
+  del_user_ev = 2;        // 删除成员
+}
+
+enum AreaType {
+  unknown_type = 0;
+  home_type = 1;   // 家庭
+  company_type = 2;   // 公司
+}
+
+message emptyReq {
+}
+
+message GetAreaInfoReq {
+  string  token = 1;
+}
+
+message GetUserInfoResp {
+  UserInfo user_info = 1;
+  repeated DepartmentBaseInfo department_infos = 2;      // 所在部门
+  Area area_info = 3;
+}
+
+message UserInfo {
+  int32 user_id = 1;
+  string account_name = 2;
+  string nick_name = 3;
+  bool is_owner = 4;
+}
+
+message Area {
+  uint64 area_id = 1;
+  string name = 2;
+  AreaType area_type = 3;
+}
+
+message DepartmentBaseInfo {
+  int32 department_id = 1;
+  string name = 2;
+  CompanyRole company_role = 3;
+}
+
+message DepartmentInfo {
+  int32 department_id = 1;
+  string name = 2;
+  repeated DepartmentInfo child_departments = 3;
+}
+
+message GetDepartmentUsersReq {
+  string token = 1;
+  repeated int32 department_ids = 2;
+}
+
+message GetDepartmentUsersResp {
+  map<int32, DepartmentUsers> department_users = 1;
+}
+
+message DepartmentUsers {
+  repeated UserInfo users = 1;
+}
+
+message SAEventInfo {
+  SAEvent event = 1;
+  bytes data = 2;
+}
+
+message BaseUserInfosReq {
+  string  token = 1;
+  repeated int32 user_ids = 2;   // 为空将获取全公司人员
+}

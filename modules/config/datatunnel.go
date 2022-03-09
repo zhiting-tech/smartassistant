@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
+	"net"
 	"strconv"
 )
 
@@ -26,4 +28,19 @@ func (t *Datatunnel) GetAddr(serviceName string) (addr string, ok bool) {
 
 	addr = val
 	return
+}
+
+func (t *Datatunnel) GetPort(serviceName string) (port int, ok bool) {
+	val, ok := t.GetAddr(serviceName)
+	if !ok {
+		return
+	}
+	addr, err := net.ResolveTCPAddr("tcp", val)
+	if err != nil {
+		logger.Error("resolve tcp err: ", err)
+		return
+	}
+
+	port = addr.Port
+	return port, true
 }

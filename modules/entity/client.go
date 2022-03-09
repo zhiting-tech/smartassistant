@@ -68,7 +68,7 @@ func InitClient() (err error) {
 	var clients = make([]Client, 0)
 	saClient := Client{
 		Name:       config.GetConf().SmartAssistant.ID,
-		GrantType:  string(oauth2.Implicit) + "," + string(oauth2.PasswordCredentials) + string(oauth2.Refreshing),
+		GrantType:  string(oauth2.Implicit) + "," + string(oauth2.PasswordCredentials) + "," + string(oauth2.Refreshing),
 		AllowScope: GetDefaultScope(),
 	}
 

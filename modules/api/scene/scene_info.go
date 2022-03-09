@@ -47,10 +47,11 @@ type ControlSceneInfo struct {
 
 // DeviceInfo 执行任务类型为设备时,任务设备信息
 type DeviceInfo struct {
-	Name         string       `json:"name"`
-	LocationName string       `json:"location_name"`
-	LogoURL      string       `json:"logo_url"`
-	Status       deviceStatus `json:"status"`
+	Name           string       `json:"name"`
+	LocationName   string       `json:"location_name,omitempty"`
+	DepartmentName string       `json:"department_name,omitempty"`
+	LogoURL        string       `json:"logo_url"`
+	Status         deviceStatus `json:"status"`
 }
 
 // InfoScene 用于处理场景详情接口的请求
@@ -179,8 +180,9 @@ func WrapTaskInfo(c *gin.Context, task entity.SceneTask) (taskInfo SceneTaskInfo
 
 func WrapDeviceInfo(deviceID int, req *http.Request, c *gin.Context) (deviceInfo DeviceInfo, err error) {
 	var (
-		location entity.Location
-		device   entity.Device
+		location   entity.Location
+		department entity.Department
+		device     entity.Device
 	)
 
 	if device, err = entity.GetDeviceByIDWithUnscoped(deviceID); err != nil {
@@ -197,9 +199,16 @@ func WrapDeviceInfo(deviceID int, req *http.Request, c *gin.Context) (deviceInfo
 			return
 		}
 	}
+	if device.DepartmentID != 0 {
+		if department, err = entity.GetDepartmentByID(device.DepartmentID); err != nil {
+			return
+		}
+	}
+
 	deviceInfo.Name = device.Name
-	deviceInfo.LogoURL = plugin.LogoURL(req, device)
 	deviceInfo.LocationName = location.Name
+	deviceInfo.DepartmentName = department.Name
+	deviceInfo.LogoURL = plugin.DeviceLogoURL(req, device)
 
 	if device.Deleted.Valid {
 		// 设备已删除

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	errors2 "errors"
 	"fmt"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth"
 	"github.com/zhiting-tech/smartassistant/modules/types"
@@ -23,15 +24,16 @@ const (
 	HttpRequestTimeout = (time.Duration(30) * time.Second)
 )
 
-func GetUserCredentialAuthToken(areaID uint64) string {
+func GetAreaAuthToken(areaID uint64) string {
 	req, _ := http.NewRequest("", "", nil)
 	req.Header.Set(types.AreaID, strconv.FormatUint(areaID, 10))
 	scClient, _ := entity.GetSCClient()
 	tgr := oauth2.TokenGenerateRequest{
-		ClientID:     scClient.ClientID,
-		ClientSecret: scClient.ClientSecret,
-		Scope:        scClient.AllowScope,
-		Request:      req,
+		ClientID:       scClient.ClientID,
+		ClientSecret:   scClient.ClientSecret,
+		Scope:          scClient.AllowScope,
+		Request:        req,
+		AccessTokenExp: 30 * 24 * time.Hour, // 设置为30天有效期
 	}
 
 	ti, err := oauth.GetOauthServer().GetAccessToken(oauth2.ClientCredentials, &tgr)
@@ -43,16 +45,25 @@ func GetUserCredentialAuthToken(areaID uint64) string {
 	return ti.GetAccess()
 }
 
-// SendUserCredentialAuthTokenToSC 发送找回用户凭证的认证token给SC
-func SendUserCredentialAuthTokenToSC(areaID uint64) {
+// sendAreaAuthToSC 发送认证token给SC
+func sendAreaAuthToSC(areaID uint64) {
 	if len(config.GetConf().SmartCloud.Domain) <= 0 {
 		return
 	}
+	var err error
+	defer func() {
+		updates := map[string]interface{}{
+			"is_send_auth_to_sc": err == nil,
+		}
+		if err = entity.UpdateArea(areaID, updates); err != nil {
+			logger.Error(err)
+		}
+	}()
 	saID := config.GetConf().SmartAssistant.ID
 	scUrl := config.GetConf().SmartCloud.URL()
 	url := fmt.Sprintf("%s/sa/%s/areas/%d", scUrl, saID, areaID)
 	body := map[string]interface{}{
-		"area_token": GetUserCredentialAuthToken(areaID),
+		"area_token": GetAreaAuthToken(areaID),
 	}
 	b, _ := json.Marshal(body)
 	logger.Debug(url)
@@ -72,11 +83,12 @@ func SendUserCredentialAuthTokenToSC(areaID uint64) {
 	}
 	if httpResp.StatusCode != http.StatusOK {
 		logger.Warnf("request %s error,status:%v\n", url, httpResp.Status)
+		err = errors2.New(httpResp.Status)
 		return
 	}
 }
 
-func SendUserCredentialToSC() {
+func SendAreaAuthToSC() {
 	areas, err := entity.GetAreas()
 	if err != nil {
 		logger.Errorf("get areas err (%v)", err)
@@ -84,7 +96,9 @@ func SendUserCredentialToSC() {
 	}
 
 	for _, area := range areas {
-		SendUserCredentialAuthTokenToSC(area.ID)
+		if !area.IsSendAuthToSC {
+			sendAreaAuthToSC(area.ID)
+		}
 	}
 
 }

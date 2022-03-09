@@ -22,6 +22,7 @@ type DataSyncReq struct {
 type AreaInfo struct {
 	Name      string         `json:"name"`      // 家庭名称
 	Locations []LocationInfo `json:"locations"` // 家庭下的房间列表
+	Departments []LocationInfo `json:"departments"` // 公司下的部门列表
 }
 
 // LocationInfo 需要同步的房间数据
@@ -84,6 +85,19 @@ func DataSync(c *gin.Context) {
 				AreaID:    sessionUser.AreaID,
 			}
 			if err = tx.Create(&location).Error; err != nil {
+				err = errors.Wrap(err, errors.InternalServerErr)
+				return err
+			}
+		}
+
+		for _, d := range req.Area.Departments {
+			department := entity.Department{
+				Name:      d.Name,
+				CreatedAt: time.Now(),
+				Sort:      d.Sort,
+				AreaID:    sessionUser.AreaID,
+			}
+			if err = tx.Create(&department).Error; err != nil {
 				err = errors.Wrap(err, errors.InternalServerErr)
 				return err
 			}

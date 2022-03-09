@@ -2,12 +2,9 @@ version: "3.9"
 
 services:
   zt-vue:
-    image: docker.yctc.tech/zt-nginx:3.0
+    image: docker.yctc.tech/zt-nginx:latest
     ports:
       - 9020:9020
-    volumes:
-      - ../../zt-nginx/nginx.conf:/etc/nginx/nginx.conf
-      - ../../zt-nginx/sc.conf:/etc/nginx/conf.d/sc.conf
   etcd:
     image: bitnami/etcd:3
     environment:
@@ -24,7 +21,8 @@ services:
       - "24224:24224"
       - "24224:24224/udp"
     volumes:
-      - ../../fluentd.conf:/fluentd/etc/fluentd.conf
+      - /mnt/data/zt-smartassistant/config/fluentd.conf:/fluentd/etc/fluentd.conf
+      - /mnt/data/zt-smartassistant/log:/var/log
 
   smartassistant:
     image: smartassistant
@@ -36,16 +34,17 @@ services:
         fluentd-address: "localhost:24224"
         tag: smartassistant.main
         fluentd-async-connect: "true"
+    environment:
+      TZ: Asia/Shanghai
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      # - ../../data/sadb.db:/app/data/sadb.db # 如果要挂载到容器里面的话需要先在本地创建db文件
+      - ../../data/sadb.db:/app/data/sadb.db # 如果要挂载到容器里面的话需要先在本地创建db文件
       - ../../app.yaml:/app/app.yaml
-      - ../../plugins.json:/app/plugins.json
       - type: bind
         bind:
           propagation: shared
-        source: /mnt/data/zt-smartassistant/data/
-        target: /mnt/data/zt-smartassistant/data/
+        source: /mnt/data/zt-smartassistant/
+        target: /mnt/data/zt-smartassistant/
     depends_on:
       - etcd
       - fluentd

@@ -17,7 +17,12 @@ func RegisterSupervisorRouter(r gin.IRouter) {
 		supervisorGroup.POST("backups/restore", Restore)
 	}
 	r.GET("supervisor/update", middleware.RequireAccount, middleware.RequirePermission(getSwUpgradePermission()), UpdateInfo)
+	r.GET("supervisor/update/latest", middleware.RequireAccount, middleware.RequirePermission(getSwUpgradePermission()), UpdateLastVersion)
 	r.POST("supervisor/update", middleware.RequireAccount, middleware.RequirePermission(getSwUpgradePermission()), Update)
+
+	r.POST("supervisor/firmware/update", middleware.RequireAccount, middleware.RequirePermission(getFwUpgradePermission()), UpdateSystem)
+	r.GET("supervisor/firmware/update", middleware.RequireAccount, middleware.RequirePermission(getFwUpgradePermission()), GetSystemInfo)
+	r.GET("supervisor/firmware/update/latest", middleware.RequireAccount, middleware.RequirePermission(getFwUpgradePermission()), GetSystemLastVersion)
 }
 
 // getSwUpgradePermission 获取软件升级权限
@@ -29,4 +34,14 @@ func getSwUpgradePermission() (p types.Permission) {
 	}
 
 	return types.NewDeviceManage(device.ID, "软件升级", types.SoftwareUpgrade)
+}
+
+func getFwUpgradePermission() (p types.Permission) {
+	device, err := entity.GetSaDevice()
+	if err != nil {
+		logger.Error(err)
+		return
+	}
+
+	return types.NewDeviceManage(device.ID, "固件升级", types.FwUpgrade)
 }

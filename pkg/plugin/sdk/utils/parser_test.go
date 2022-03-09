@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -91,11 +92,28 @@ func TestParse(t *testing.T) {
 	assert.Nil(t, d.Instances)
 
 	s3 := struct {
-		L instance.LightBulb
+		L    instance.LightBulb
+		Info instance.Info
 	}{}
+
+	s3.Info = instance.Info{
+		Name:         attribute.NewName(),
+		Identity:     attribute.NewIdentity(),
+		Model:        attribute.NewModel(),
+		Manufacturer: attribute.NewManufacturer(),
+		Version:      attribute.NewVersion(),
+	}
+	s3.Info.Name.SetString("testname")
 	d = Parse(s3)
 	assert.Equal(t, 1, len(d.Instances))
 
+	s4 := struct {
+		Child instance.ChildInstances
+	}{}
+	s4.Child.Instances = append(s4.Child.Instances, instance.LightBulb{}, instance.ColorTemp{})
+	g := Parse(s4)
+
+	fmt.Println(g.GetAttribute(1, "power"))
 }
 
 type customIns struct {

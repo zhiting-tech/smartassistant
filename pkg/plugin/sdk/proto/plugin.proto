@@ -11,8 +11,20 @@ service Plugin {
   rpc GetAttributes (GetAttributesReq) returns (GetAttributesResp);
   rpc SetAttributes (SetAttributesReq) returns (SetAttributesResp);
 
+  rpc OTA(OTAReq)  returns (stream OTAResp);
+
   rpc Connect (AuthReq) returns (GetAttributesResp);
   rpc Disconnect (AuthReq) returns (empty);
+}
+
+message OTAReq {
+  string identity = 1;
+  string firmware_url = 2;
+}
+
+message OTAResp {
+  string identity = 1;
+  int32 step = 2;
 }
 
 message AuthReq {
@@ -20,16 +32,6 @@ message AuthReq {
   map<string, string> params = 2;
 }
 
-message ExecuteReq {
-  string identity = 1;
-  string cmd = 2;
-  bytes data = 3;
-}
-message ExecuteResp {
-  bool success = 1;
-  string error = 2;
-  bytes data = 3;
-}
 message GetAttributesReq {
   string identity = 1;
 }
@@ -38,6 +40,7 @@ message GetAttributesResp {
   bool success = 1;
   string error = 2;
   repeated Instance instances = 3;
+  bool ota_support = 4;
 }
 message Instance {
   string identity = 1;
@@ -54,12 +57,6 @@ message SetAttributesReq {
 message SetAttributesResp {
   bool success = 1;
   string error = 2;
-}
-
-message Action {
-  string identity = 1;
-  int32 instance_id = 2;
-  bytes attributes = 3;
 }
 
 message device {

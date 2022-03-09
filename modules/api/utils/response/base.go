@@ -19,10 +19,10 @@ func getResponse(err error, resp interface{}) *BaseResponse {
 	if err != nil {
 		switch v := err.(type) {
 		case errors.Error:
-			logger.Printf("%+v\n", v.Err)
+			logger.Errorf("%+v\n", v.Err)
 			baseResult.Code = v.Code
 		default:
-			logger.Printf("%+v\n", err)
+			logger.Errorf("%+v\n", err)
 			baseResult.Code = errors.GetCode(errors.InternalServerErr)
 		}
 	}

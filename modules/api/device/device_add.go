@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/zhiting-tech/smartassistant/modules/event"
+
 	"github.com/gin-gonic/gin"
 	"github.com/zhiting-tech/smartassistant/modules/api/area"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth"
@@ -15,13 +17,19 @@ import (
 	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
+	"github.com/zhiting-tech/smartassistant/pkg/analytics"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"gorm.io/gorm"
 )
 
 // deviceAddReq 添加设备接口请求参数
 type deviceAddReq struct {
-	Device entity.Device `json:"device"` // TODO 校验
+	Device deviceInfo `json:"device"` // TODO 校验
+}
+
+type deviceInfo struct {
+	entity.Device
+	AreaType entity.AreaType `json:"area_type"`
 }
 
 // deviceAddResp 添加设备接口返回数据
@@ -51,16 +59,18 @@ func AddDevice(c *gin.Context) {
 		return
 	}
 
+	var uid int
 	if req.Device.Model == types.SaModel {
 		var (
 			userInfo entity.UserInfo
 			areaInfo area.Area
 		)
-		if userInfo, areaInfo, err = addSADevice(&req.Device, c); err != nil {
+		if userInfo, areaInfo, err = addSADevice(&req.Device.Device, c, req.Device.AreaType); err != nil {
 			return
 		} else {
 			resp.UserInfo = &userInfo
 			resp.AreaInfo = &areaInfo
+			uid = userInfo.UserId
 		}
 	} else {
 		sessionUser := session.Get(c)
@@ -68,12 +78,16 @@ func AddDevice(c *gin.Context) {
 			err = errors.New(status.RequireLogin)
 			return
 		}
-		if err = addDevice(&req.Device, sessionUser); err != nil {
+		uid = sessionUser.UserID
+		if err = addDevice(&req.Device.Device, sessionUser); err != nil {
 			return
 		}
 		token := session.Get(c).Token
-		resp.PluginURL = plugin.PluginURL(req.Device, c.Request, token)
+		resp.PluginURL = plugin.PluginURL(req.Device.Device, c.Request, token)
+		event.GetServer().Notify(event.NewEventMessage(event.DeviceIncrease, sessionUser.AreaID))
 	}
+	// 记录添加设备信息
+	go analytics.RecordStruct(analytics.EventTypeDeviceAdd, uid, req.Device.Device)
 	resp.ID = req.Device.ID
 	return
 }
@@ -90,7 +104,8 @@ func addDevice(d *entity.Device, sessionUser *session.User) (err error) {
 	}
 	return
 }
-func addSADevice(sa *entity.Device, c *gin.Context) (userInfo entity.UserInfo, areaInfo area.Area, err error) {
+
+func addSADevice(sa *entity.Device, c *gin.Context, areaType entity.AreaType) (userInfo entity.UserInfo, areaInfo area.Area, err error) {
 
 	// 判断SA是否存在
 	_, err = entity.GetSaDevice()
@@ -103,9 +118,13 @@ func addSADevice(sa *entity.Device, c *gin.Context) (userInfo entity.UserInfo, a
 			return
 		}
 	}
+	if !entity.IsAreaType(areaType) {
+		err = errors.New(errors.BadRequest)
+		return
+	}
 
 	var areaObj entity.Area
-	areaObj, err = entity.CreateArea("")
+	areaObj, err = entity.CreateArea("", areaType)
 	if err != nil {
 		return
 	}

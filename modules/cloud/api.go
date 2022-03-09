@@ -1,6 +1,7 @@
 package cloud
 
 import (
+	errors2 "errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -29,7 +30,7 @@ type Brand struct {
 
 type Plugin struct {
 	ID      int    `json:"id"`
-	Domain  string `json:"domain"`
+	UID     string `json:"uid"`
 	Name    string `json:"name"`
 	Image   string `json:"image"`
 	Version string `json:"version"`
@@ -55,9 +56,13 @@ func SaveBrandLogos() {
 func GetBrands() (brands []Brand, err error) {
 
 	url := fmt.Sprintf("%s/common/brands", config.GetConf().SmartCloud.URL())
-	logrus.Println(url)
+	logrus.Debug(url)
 	resp, err := http.Get(url)
 	if err != nil {
+		return
+	}
+	if resp.StatusCode != http.StatusOK {
+		err = fmt.Errorf("get %s fail, status code: %d", url, resp.StatusCode)
 		return
 	}
 
@@ -65,6 +70,11 @@ func GetBrands() (brands []Brand, err error) {
 
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
+		return
+	}
+	status := jsoniter.Get(data, "status").ToInt()
+	if status != 0 {
+		err = fmt.Errorf("invalid response %s", string(data))
 		return
 	}
 
@@ -93,9 +103,13 @@ type BrandInfo struct {
 
 func GetBrandInfo(brandName string) (brand BrandInfo, err error) {
 	url := fmt.Sprintf("%s/common/brands/name/%s", config.GetConf().SmartCloud.URL(), brandName)
-	logrus.Println(url)
+	logrus.Debug(url)
 	resp, err := http.Get(url)
 	if err != nil {
+		return
+	}
+	if resp.StatusCode != http.StatusOK {
+		err = fmt.Errorf("get %s fail, status code: %d", url, resp.StatusCode)
 		return
 	}
 
@@ -105,9 +119,14 @@ func GetBrandInfo(brandName string) (brand BrandInfo, err error) {
 	if err != nil {
 		return
 	}
+	status := jsoniter.Get(data, "status").ToInt()
+	if status != 0 {
+		err = fmt.Errorf("invalid response %s", string(data))
+		return
+	}
 
 	any := jsoniter.Get(data, "data")
-	logrus.Println(any.ToString())
+	logrus.Debug(any.ToString())
 	any.ToVal(&brand)
 	err = any.LastError()
 	return
@@ -115,16 +134,24 @@ func GetBrandInfo(brandName string) (brand BrandInfo, err error) {
 
 func GetPlugins() (plugins []Plugin, err error) {
 	url := fmt.Sprintf("%s/common/plugins", config.GetConf().SmartCloud.URL())
-	logrus.Println(url)
+	logrus.Debug(url)
 	resp, err := http.Get(url)
 	if err != nil {
 		return
 	}
-
+	if resp.StatusCode != http.StatusOK {
+		err = fmt.Errorf("get %s fail, status code: %d", url, resp.StatusCode)
+		return
+	}
 	defer resp.Body.Close()
 
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
+		return
+	}
+	status := jsoniter.Get(data, "status").ToInt()
+	if status != 0 {
+		err = fmt.Errorf("invalid response %s", string(data))
 		return
 	}
 
@@ -134,12 +161,16 @@ func GetPlugins() (plugins []Plugin, err error) {
 	return
 }
 
-func GetPlugin(domain string) (plugin Plugin, err error) {
-	url := fmt.Sprintf("%s/common/plugins/domain/%s",
-		config.GetConf().SmartCloud.URL(), domain)
-	logrus.Println(url)
+func GetPlugin(PluginUID string) (plugin Plugin, err error) {
+	url := fmt.Sprintf("%s/common/plugins/uid/%s",
+		config.GetConf().SmartCloud.URL(), PluginUID)
+	logrus.Debug(url)
 	resp, err := http.Get(url)
 	if err != nil {
+		return
+	}
+	if resp.StatusCode != http.StatusOK {
+		err = fmt.Errorf("get %s fail, status code: %d", url, resp.StatusCode)
 		return
 	}
 
@@ -149,9 +180,58 @@ func GetPlugin(domain string) (plugin Plugin, err error) {
 	if err != nil {
 		return
 	}
+	status := jsoniter.Get(data, "status").ToInt()
+	if status != 0 {
+		err = fmt.Errorf("invalid response %s", string(data))
+		return
+	}
 
 	any := jsoniter.Get(data, "data", "plugin")
 	any.ToVal(&plugin)
 	err = any.LastError()
+	return
+}
+
+type Firmware struct {
+	Version string `json:"version"`
+	URL     string `json:"url"`
+	Info    string `json:"info"`
+}
+
+// GetLatestFirmware 获取最新的固件
+func GetLatestFirmware(pluginID, model string) (firmware Firmware, err error) {
+
+	url := fmt.Sprintf("%s/common/plugins/uid/%s/model/%s/firmwares",
+		config.GetConf().SmartCloud.URL(), pluginID, model)
+	logrus.Debug(url)
+	resp, err := http.Get(url)
+	if err != nil {
+		return
+	}
+	if resp.StatusCode != http.StatusOK {
+		err = fmt.Errorf("get %s fail, status code: %d", url, resp.StatusCode)
+		return
+	}
+
+	defer resp.Body.Close()
+
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+	status := jsoniter.Get(data, "status").ToInt()
+	if status != 0 {
+		err = fmt.Errorf("invalid response %s", string(data))
+		return
+	}
+
+	var firmwares []Firmware
+	any := jsoniter.Get(data, "data", "firmwares")
+	any.ToVal(&firmwares)
+	err = any.LastError()
+	if len(firmwares) != 0 {
+		return firmwares[0], nil
+	}
+	err = errors2.New("no firmware found")
 	return
 }

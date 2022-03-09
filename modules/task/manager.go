@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	errors2 "errors"
-	"fmt"
+	"github.com/zhiting-tech/smartassistant/modules/event"
 	"net/http"
 	"sync"
 	"time"
@@ -32,10 +32,57 @@ type Manager interface {
 	Run(ctx context.Context)
 }
 
+type sceneTasksManager struct {
+	queue *queueServe
+	tasks map[string]*Task // TaskID -> *Task
+	mu    sync.Mutex
+}
+
+func newSceneTasksManager(queue *queueServe) *sceneTasksManager {
+	return &sceneTasksManager{
+		queue: queue,
+		tasks: make(map[string]*Task),
+	}
+}
+
+func (st *sceneTasksManager) AddTasks(tasks ...*Task) {
+	st.mu.Lock()
+	for _, task := range tasks {
+		st.tasks[task.ID] = task
+	}
+	st.mu.Unlock()
+}
+
+func (st *sceneTasksManager) Executed(taskID string) {
+	st.mu.Lock()
+	delete(st.tasks, taskID)
+	st.mu.Unlock()
+}
+
+func (st *sceneTasksManager) Remove(taskID string) {
+	st.mu.Lock()
+	task, ok := st.tasks[taskID]
+	if ok {
+		delete(st.tasks, taskID)
+		st.queue._remove(task.index)
+	}
+	st.mu.Unlock()
+}
+
+func (st *sceneTasksManager) RemoveAll() {
+	st.mu.Lock()
+	for _, task := range st.tasks {
+		st.queue._remove(task.index)
+	}
+	st.tasks = make(map[string]*Task)
+	st.mu.Unlock()
+}
+
 // LocalManager Task 服务
 type LocalManager struct {
 	queue        *queueServe
 	runningScene sync.Map // 正在执行的场景的id -> queue index
+	scenes       sync.Map // 保存queue中记录所有与entity.Scene相关的未执行的场景 sceneID -> *SceneTasks
 }
 
 func NewLocalManager() *LocalManager {
@@ -82,10 +129,10 @@ func (m *LocalManager) addSceneTaskByTime(t time.Time) {
 	}
 	for _, scene := range scenes {
 		// 没有定时触发条件 不加入队列
-		if !IsSceneHaveTimeCondition(scene) {
+		if !scene.HaveTimeCondition() {
 			continue
 		}
-		m.AddSceneTask(scene)
+		m.AddSceneTaskWithTime(scene, t)
 	}
 }
 
@@ -107,6 +154,11 @@ func (m *LocalManager) addArrangeSceneTask(executeTime time.Time) {
 // DeleteSceneTask 删除场景任务
 func (m *LocalManager) DeleteSceneTask(sceneID int) {
 	// 现时需求如果场景对应的任务已运行，则不需要处理
+	value, ok := m.scenes.LoadAndDelete(sceneID)
+	if ok {
+		sceneTasks := value.(*sceneTasksManager)
+		sceneTasks.RemoveAll()
+	}
 }
 
 // addSceneTaskByID 根据场景id执行场景（执行或者开启时调用）
@@ -124,7 +176,12 @@ func (m *LocalManager) addSceneTaskByID(sceneID int) error {
 
 // AddSceneTask 添加场景任务（执行或者开启时调用）
 func (m *LocalManager) AddSceneTask(scene entity.Scene) {
-	var t *Task
+	m.AddSceneTaskWithTime(scene, time.Now())
+}
+
+func (m *LocalManager) AddSceneTaskWithTime(scene entity.Scene, t time.Time) {
+	var task *Task
+	date := now.New(t)
 	if scene.AutoRun { // 开启自动场景
 		logger.Infof("open scene %d", scene.ID)
 		// 找到定时条件的时间
@@ -132,26 +189,30 @@ func (m *LocalManager) AddSceneTask(scene entity.Scene) {
 			if c.ConditionType == entity.ConditionTypeTiming {
 
 				// 获取任务今天的下次执行时间
-				execTime := now.BeginningOfDay().Add(c.TimingAt.Sub(now.New(c.TimingAt).BeginningOfDay()))
-				if execTime.Before(time.Now()) || execTime.After(now.EndOfDay()) {
-					logger.Infof("now:%v,invalid next execute time:%v", time.Now(), execTime)
+				execTime := date.BeginningOfDay().Add(c.TimingAt.Sub(now.New(c.TimingAt).BeginningOfDay()))
+				if execTime.Before(time.Now()) || execTime.After(date.EndOfDay()) {
+					logger.Debugf("now:%v,invalid next execute time:%v", time.Now(), execTime)
 					continue
 				}
 
-				t = NewTaskAt(m.wrapSceneFunc(scene, true), execTime)
-				m.pushTask(t, scene)
+				if !IsConditionsSatisfied(scene, true) {
+					logger.Debugf("auto scene:%d's conditions not satisfied", scene.ID)
+					continue
+				}
+				task = NewTaskAt(m.wrapSceneFunc(scene), execTime)
+				m.pushTask(task, scene)
 				continue
 			}
 		}
 	} else { // 执行手动场景
 		logger.Infof("execute scene %d", scene.ID)
-		t = NewTask(m.wrapSceneFunc(scene, false), 0)
-		m.pushTask(t, scene)
+		task = NewTask(m.wrapSceneFunc(scene), 0)
+		m.pushTask(task, scene)
 	}
 }
 
 func (m *LocalManager) pushTask(task *Task, target interface{}) {
-	task.WithWrapper(taskLogWrapper(target))
+	task.WithWrapper(m.sceneTaskManageWrapper(task, target), taskLogWrapper(target))
 	m.queue.push(task)
 }
 
@@ -175,8 +236,52 @@ func (m *LocalManager) addRunningScene(sceneID int, queueIndex int) {
 	m.runningScene.Store(sceneID, queueIndex)
 }
 
+// sceneTaskManageWrapper 记录当前任务队列中与entity.Scene相关的未执行的场景任务
+func (m *LocalManager) sceneTaskManageWrapper(task *Task, target interface{}) WrapperFunc {
+	var (
+		sceneTasks  *sceneTasksManager
+		wrapperFunc WrapperFunc
+	)
+
+	// 判断是否处理entity.Scene
+	scene, ok := target.(entity.Scene)
+	if !ok {
+		wrapperFunc = func(f TaskFunc) TaskFunc {
+			return f
+		}
+	} else {
+
+		// 统计当前所有entity.Scene相关的场景任务
+		value, ok := m.scenes.Load(scene.ID)
+		if !ok {
+			sceneTasks = newSceneTasksManager(m.queue)
+			value, ok = m.scenes.LoadOrStore(scene.ID, sceneTasks)
+		}
+		sceneTasks = value.(*sceneTasksManager)
+		sceneTasks.AddTasks(task)
+
+		wrapperFunc = func(f TaskFunc) TaskFunc {
+			return func(task *Task) error {
+				// 不存在则说明当前场景已经移除
+				value, ok := m.scenes.Load(scene.ID)
+				if !ok {
+					logger.Debugf("scene.ID %d is remove\n", scene.ID)
+					return nil
+				}
+				// 移除要执行的任务
+				sceneTasks := value.(*sceneTasksManager)
+				sceneTasks.Executed(task.ID)
+
+				return f(task)
+			}
+		}
+	}
+
+	return wrapperFunc
+}
+
 // wrapSceneFunc  包装场景为 TaskFunc
-func (m *LocalManager) wrapSceneFunc(sc entity.Scene, isTrigByTimer bool) (f TaskFunc) {
+func (m *LocalManager) wrapSceneFunc(sc entity.Scene) (f TaskFunc) {
 	return func(t *Task) error {
 		scene, err := entity.GetSceneInfoById(sc.ID)
 		if err != nil {
@@ -185,12 +290,10 @@ func (m *LocalManager) wrapSceneFunc(sc entity.Scene, isTrigByTimer bool) (f Tas
 			}
 			return errors.Wrap(err, errors.InternalServerErr)
 		}
+		// TODO 过滤旧版本场景, sc.version < scene.version
+
 		if scene.Deleted.Valid { // 已删除的场景不执行
 			return errors.New(status.SceneNotExist)
-		}
-		if scene.AutoRun && !IsConditionsSatisfied(scene, isTrigByTimer) { // 自动场景则判断条件
-			logger.Infof("auto scene:%d's conditons not satisfied", scene.ID)
-			return nil
 		}
 		// TODO 此代码达到其功能，需清理
 		m.addRunningScene(scene.ID, t.index)
@@ -224,7 +327,7 @@ func (m *LocalManager) wrapSceneFunc(sc entity.Scene, isTrigByTimer bool) (f Tas
 func (m *LocalManager) wrapTaskToFunc(task entity.SceneTask) (f TaskFunc) {
 	return func(t *Task) error {
 		// TODO 判断权限、判断场景是否有修改
-		fmt.Printf("execute task:%d,type:%d\n", task.ID, task.Type)
+		logger.Debugf("execute task:%d,type:%d\n", task.ID, task.Type)
 		switch task.Type {
 		case entity.TaskTypeSmartDevice: // 控制设备
 			return m.executeDevice(task)
@@ -256,7 +359,7 @@ func (m *LocalManager) executeDevice(task entity.SceneTask) (err error) {
 			}
 			return errors.Wrap(err, http.StatusInternalServerError)
 		}
-		logger.Infof("execute device command device id:%d instance id:%d attr:%s val:%v",
+		logger.Debugf("execute device command device id:%d instance id:%d attr:%s val:%v",
 			device.ID, d.InstanceID, d.Attribute.Attribute, d.Attribute.Val)
 
 		attributes := []plugin2.SetAttribute{
@@ -316,12 +419,31 @@ func (m *LocalManager) deviceAttrChange(deviceID int, attr entity.Attribute) {
 	for _, scene := range scenes {
 		scene, _ = entity.GetSceneInfoById(scene.ID)
 		// 全部满足且有定时条件则不执行
-		if scene.IsMatchAllCondition() && IsSceneHaveTimeCondition(scene) {
-			fmt.Printf("device %d state %s changed but scenes %d not match time conditoin,ignore\n",
+		if scene.IsMatchAllCondition() && scene.HaveTimeCondition() {
+			logger.Debugf("device %d state %s changed but scenes %d not match time conditoin,ignore\n",
 				deviceID, attr.Attribute.Attribute, scene.ID)
 			continue
 		}
-		t := NewTask(m.wrapSceneFunc(scene, false), 0)
+
+		if !IsConditionsSatisfied(scene, false) {
+			logger.Debugf("auto scene:%d's conditions not satisfied", scene.ID)
+			continue
+		}
+		t := NewTask(m.wrapSceneFunc(scene), 0)
 		m.pushTask(t, scene)
 	}
+}
+
+func DeviceStateChange(em event.EventMessage) error {
+	deviceID := em.GetDeviceID()
+	device, err := entity.GetDeviceByID(deviceID)
+	if err != nil {
+		return err
+	}
+	attr := em.GetAttr()
+	if attr == nil {
+		logger.Warn("device or attr is nil")
+		return nil
+	}
+	return GetManager().DeviceStateChange(device, *attr)
 }

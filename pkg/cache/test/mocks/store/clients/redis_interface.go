@@ -95,6 +95,20 @@ func (mr *MockRedisClientInterfaceMockRecorder) Set(key, values, expiration inte
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Set", reflect.TypeOf((*MockRedisClientInterface)(nil).Set), key, values, expiration)
 }
 
+// SetNX mocks base method.
+func (m *MockRedisClientInterface) SetNX(key string, value interface{}, expiration time.Duration) *redis.BoolCmd {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetNX", key, value, expiration)
+	ret0, _ := ret[0].(*redis.BoolCmd)
+	return ret0
+}
+
+// SetNX indicates an expected call of SetNX.
+func (mr *MockRedisClientInterfaceMockRecorder) SetNX(key, value, expiration interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNX", reflect.TypeOf((*MockRedisClientInterface)(nil).SetNX), key, value, expiration)
+}
+
 // TTL mocks base method.
 func (m *MockRedisClientInterface) TTL(key string) *redis.DurationCmd {
 	m.ctrl.T.Helper()

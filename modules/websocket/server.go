@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/zhiting-tech/smartassistant/modules/entity"
+	event2 "github.com/zhiting-tech/smartassistant/modules/event"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
 )
@@ -17,8 +18,6 @@ import (
 var (
 	ErrClientNotFound = errors.New("client not found")
 )
-
-const attributeChange = "attribute_change"
 
 // Server WebSocket服务端
 type Server struct {
@@ -57,6 +56,7 @@ func (s *Server) AcceptWebSocket(c *gin.Context) {
 		conn:   conn,
 		bucket: s.bucket,
 		send:   make(chan []byte, 4),
+		ginCtx: c,
 	}
 
 	s.bucket.register <- cli
@@ -90,19 +90,31 @@ func (s *Server) Run(ctx context.Context) {
 	logger.Warning("websocket server stopped")
 }
 
-// OnDeviceStateChange 设备状态改变回调，会广播给所有客户端，并且触发场景
-func (s *Server) OnDeviceStateChange(d entity.Device, attr entity.Attribute) error {
-	resp := Event{
-		EventType: attributeChange,
-		Data: map[string]interface{}{
+// OnDeviceChange 设备状态,数量改变回调，会广播给所有客户端，并且触发场景
+func (s *Server) OnDeviceChange(em event2.EventMessage) error {
+	event := NewEvent(string(em.EventType))
+	areaID := em.AreaID
+	switch em.EventType {
+	case event2.DeviceIncrease, event2.DeviceDecrease:
+	case event2.AttributeChange:
+		deviceID := em.GetDeviceID()
+		d, err := entity.GetDeviceByID(deviceID)
+		if err != nil {
+			return err
+		}
+		attr := em.GetAttr()
+		if attr == nil {
+			logger.Warn("attr is nil")
+			return nil
+		}
+		event.Data = map[string]interface{}{
 			"identity":    d.Identity,
 			"instance_id": attr.InstanceID,
 			"attr":        attr.Attribute,
-		},
+			"domain":      d.PluginID,
+		}
 	}
-	data, _ := json.Marshal(resp)
-	s.Broadcast(d.AreaID, data)
-
-	logger.Debug("broadcast state change:", string(data))
+	data, _ := json.Marshal(event)
+	s.Broadcast(areaID, data)
 	return nil
 }

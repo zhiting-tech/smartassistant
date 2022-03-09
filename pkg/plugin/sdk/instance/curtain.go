@@ -13,6 +13,7 @@ type Curtain struct {
 	Direction  *Direction // 0默认方向1反方向
 	UpperLimit *Limit     // 0删除1设置
 	LowerLimit *Limit     // 0删除1设置
+	Calibration  *Calibration  // 校准 true为进行校准/已经校准完 false为未校准
 }
 
 func (c Curtain) InstanceName() string {
@@ -72,4 +73,12 @@ func NewStyle() *Style {
 	s := Style{}
 	s.SetEnums(0, 1, 2, 3) // 左右/左/右/上下
 	return &s
+}
+
+type Calibration struct {
+	attribute.Bool
+}
+
+func NewCalibration() *Calibration {
+	return &Calibration{}
 }

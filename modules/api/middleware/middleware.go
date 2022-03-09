@@ -3,13 +3,17 @@ package middleware
 
 import (
 	"context"
+	errors2 "errors"
 	"fmt"
-	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth"
+	"github.com/sirupsen/logrus"
 	"net/http"
 	"strconv"
 	"strings"
 
-	"github.com/gin-contrib/sessions"
+	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth"
+	"github.com/zhiting-tech/smartassistant/modules/utils/jwt"
+	"gopkg.in/oauth2.v3"
+
 	"github.com/gin-gonic/gin"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
@@ -24,28 +28,65 @@ import (
 
 // RequireAccount 用户需要登录才可访问对应的接口
 func RequireAccount(c *gin.Context) {
-	if err := verifyAccessToken(c); err != nil {
+	if _, err := verifyAccessToken(c); err != nil {
 		response.HandleResponse(c, err, nil)
 		c.Abort()
 		return
 	}
 }
 
-func verifyAccessToken(c *gin.Context) (err error) {
-	accessToken := c.GetHeader(types.SATokenKey)
-	if accessToken == "" {
-		accessToken = c.GetHeader(types.ScopeTokenKey)
-		// 将token写入smart-assistant-token 头中，供session.Get()方法使用
-		c.Request.Header.Set(types.SATokenKey, accessToken)
+// RequireAccountWithScope 检查是否登录，并且是否有权限
+func RequireAccountWithScope(scope string) func(ctx *gin.Context) {
+	return func(c *gin.Context) {
+		// TODO 兼容代码，后续删除
+		if c.GetHeader(types.ScopeTokenKey) != "" &&
+			c.GetHeader(types.SATokenKey) == "" {
+			c.Request.Header.Set(types.SATokenKey, c.GetHeader(types.ScopeTokenKey))
+		}
+
+		// 校验token
+		ti, err := verifyAccessToken(c)
+		if err != nil {
+			response.HandleResponse(c, err, nil)
+			c.Abort()
+			return
+		}
+
+		// 没有设置scope，默认不限制
+		if ti.GetScope() == "" {
+			c.Next()
+			return
+		}
+		// 校验scope
+		if !strings.Contains(ti.GetScope(), scope) {
+			err = errors2.New("permission deny: invalid scope")
+			response.HandleResponse(c, err, nil)
+			c.Abort()
+			return
+		}
+		c.Next()
+		return
 	}
-	_, err = oauth.GetOauthServer().Manager.LoadAccessToken(accessToken)
+}
+
+func verifyAccessToken(c *gin.Context) (ti oauth2.TokenInfo, err error) {
+	accessToken := c.GetHeader(types.SATokenKey)
+	ti, err = oauth.GetOauthServer().Manager.LoadAccessToken(accessToken)
 	if err != nil {
 		var uerr = errors.New(status.UserNotExist)
 		if err.Error() == uerr.Error() {
-			return uerr
+			return ti, uerr
 		}
-		err = errors.Wrap(err, status.RequireLogin)
-		return err
+
+		if err.Error() == jwt.ErrTokenIsExpired.Error() {
+			return ti, errors.New(status.ErrAccessTokenExpired)
+		}
+
+		if err.Error() == errors.New(status.PasswordChanged).Error() {
+			return ti, err
+		}
+
+		return ti, errors.Wrap(err, status.RequireLogin)
 	}
 	return
 }
@@ -54,7 +95,7 @@ func verifyAccessToken(c *gin.Context) (err error) {
 func RequireOwner(c *gin.Context) {
 	u := session.Get(c)
 	if u == nil {
-		response.HandleResponse(c, nil, nil)
+		response.HandleResponse(c, errors.New(status.RequireLogin), nil)
 		c.Abort()
 		return
 	}
@@ -65,21 +106,6 @@ func RequireOwner(c *gin.Context) {
 	response.HandleResponse(c, errors.New(status.Deny), nil)
 	c.Abort()
 	return
-}
-
-// WithScope 校验用户权限
-func WithScope(scope string) func(ctx *gin.Context) {
-	return func(ctx *gin.Context) {
-		accessToken := ctx.GetHeader(types.SATokenKey)
-		ti, _ := oauth.GetOauthServer().Manager.LoadAccessToken(accessToken)
-		if !strings.Contains(ti.GetScope(), scope) {
-			err := errors.New(status.Deny)
-			response.HandleResponse(ctx, err, nil)
-			ctx.Abort()
-			return
-		}
-	}
-
 }
 
 // RequireToken 使用token验证身份，不依赖cookies.
@@ -100,24 +126,16 @@ func RequireToken(c *gin.Context) {
 	return
 }
 
-func Middleware(sessionName string) func(ctx *gin.Context) {
-	return func(ctx *gin.Context) {
-		sessions.Sessions(sessionName, session.GetStore())(ctx)
-	}
-}
-
-func DefaultMiddleware() func(ctx *gin.Context) {
-	return Middleware(session.DefaultSessionName)
-}
-
-// RequirePermission 判断是否有权限
-func RequirePermission(p types.Permission) gin.HandlerFunc {
+// RequirePermission 判断是否有权限, 如果有多个权限判断表示的是满足其中一个权限就行
+func RequirePermission(permissions ...types.Permission) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		u := session.Get(c)
 		if u != nil {
-			if entity.JudgePermit(u.UserID, p) {
-				c.Next()
-				return
+			for _, p := range permissions {
+				if entity.JudgePermit(u.UserID, p) {
+					c.Next()
+					return
+				}
 			}
 		}
 		err := errors.New(status.Deny)
@@ -134,8 +152,13 @@ func ProxyToPlugin(ctx *gin.Context) {
 	if up, err := reverseproxy.GetManager().GetUpstream(path); err != nil {
 		response.HandleResponseWithStatus(ctx, http.StatusBadGateway, err, nil)
 	} else {
-		req := ctx.Request.Clone(context.Background())
+		// TODO 扩展不用SA反向代理后删掉
+		if ctx.GetHeader(types.ScopeTokenKey) != "" &&
+			ctx.GetHeader(types.SATokenKey) == "" {
+			ctx.Request.Header.Set(types.SATokenKey, ctx.GetHeader(types.ScopeTokenKey))
+		}
 
+		req := ctx.Request.Clone(context.Background())
 		user := session.Get(ctx)
 		if user != nil {
 			req.Header.Add("scope-user-id", strconv.Itoa(user.UserID))
@@ -145,7 +168,7 @@ func ProxyToPlugin(ctx *gin.Context) {
 		oldPrefix := fmt.Sprintf("%s/plugin/%s", url.StaticPath(), path)
 		newPrefix := fmt.Sprintf("api/plugin/%s", path)
 		req.URL.Path = strings.Replace(req.URL.Path, oldPrefix, newPrefix, 1)
-		logger.Printf("serve request from %s to %s", ctx.Request.URL.Path, req.URL.Path)
+		logger.Debugf("serve request from %s to %s", ctx.Request.URL.Path, req.URL.Path)
 		up.Proxy.ServeHTTP(ctx.Writer, req)
 	}
 }
@@ -153,8 +176,14 @@ func ProxyToPlugin(ctx *gin.Context) {
 // ValidateSCReq 校验来自sc的请求
 func ValidateSCReq(c *gin.Context) {
 	accessToken := c.GetHeader("Auth-Token")
+	logrus.Debug("areaToken in request Header: ", accessToken)
 	_, err := oauth.GetOauthServer().Manager.LoadAccessToken(accessToken)
 	if err != nil {
+		// 忽略掉areaToken 过期问题
+		if err.Error() == jwt.ErrTokenIsExpired.Error() {
+			c.Next()
+			return
+		}
 		err = errors.New(status.Deny)
 		response.HandleResponse(c, err, nil)
 		c.Abort()

@@ -12,6 +12,7 @@
   }
 }
 ```
+
 * id: 消息ID，必填，服务端会返回对应 ID 的结果
 * domain: `plugin`或者插件id
 
@@ -47,18 +48,18 @@
 
 ```json
 {
-    "id": 1,
-    "type": "",
-    "result": {
-        "device": {
-            "name": "zhiting_M1",
-            "identity": "hijklmn",
-            "model": "M1",
-            "manufacturer": "zhiting",
-            "plugin_id": "demo"
-        }
-    },
-    "success": true
+  "id": 1,
+  "type": "",
+  "result": {
+    "device": {
+      "name": "zhiting_M1",
+      "identity": "hijklmn",
+      "model": "M1",
+      "manufacturer": "zhiting",
+      "plugin_id": "demo"
+    }
+  },
+  "success": true
 }
 ```
 
@@ -107,7 +108,8 @@
             }
           ]
         }
-      ]
+      ],
+      "ota_support": true
     }
   },
   "success": true
@@ -145,5 +147,61 @@
   "type": "response",
   "success": true,
   "error": "error"
+}
+```
+
+### 检查设备是否有固件更新
+
+#### req
+
+```json
+{
+  "id": 1,
+  "domain": "zhiting",
+  "service": "check_update",
+  "identity": "2095030692"
+}
+```
+
+#### resp
+
+```json
+{
+  "id": 1,
+  "type": "response",
+  "result": {
+    "current_version": "1.0.4",
+    "latest_firmware": {
+      "version": "1.0.4",
+      "url": "https://sc.zhitingtech.com:11110/download/ZT-SW3ZLW001W_v1.0.4.bin",
+      "info": "1.0.4更新"
+    },
+    "update_available": false
+  },
+  "success": true
+}
+```
+
+### 通过插件更新设备固件
+
+#### req
+
+```json
+{
+  "id": 1,
+  "domain": "zhiting",
+  "service": "ota",
+  "identity": "2095030692"
+}
+```
+
+#### resp
+
+```json
+{
+  "id": 1,
+  "type": "response",
+  "result": null,
+  "success": true
 }
 ```

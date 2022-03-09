@@ -16,7 +16,7 @@
 
 sdk中提供了预定义的设备模型，使用模型可以方便SA有效进行管理和控制
 
-请参考[设备模型](plugin-model.md)
+请参考[设备模型](device-thing-model.md)
 
 ```go
 package plugin
@@ -156,7 +156,7 @@ import (
 )
 
 func main() {
-	p := server.NewPluginServer("demo") // 插件服务名
+	p := server.NewPluginServer() // 插件服务名
 	go func() {
 		// 发现设备，并将设备添加到manager中
 		d := NewDevice()

@@ -17,8 +17,9 @@ import (
 
 // UpdateDeviceReq 修改设备接口请求参数
 type UpdateDeviceReq struct {
-	Name       *string `json:"name"`
-	LocationID int     `json:"location_id"`
+	Name         *string `json:"name"`
+	LocationID   int     `json:"location_id"`
+	DepartmentID int     `json:"department_id"`
 }
 
 func (req *UpdateDeviceReq) Validate() (updateDevice entity.Device, err error) {
@@ -28,6 +29,12 @@ func (req *UpdateDeviceReq) Validate() (updateDevice entity.Device, err error) {
 		}
 	}
 	updateDevice.LocationID = req.LocationID
+	if req.DepartmentID != 0 {
+		if _, err = entity.GetDepartmentByID(req.DepartmentID); err != nil {
+			return
+		}
+	}
+	updateDevice.DepartmentID = req.DepartmentID
 
 	if req.Name != nil {
 		if err = checkDeviceName(*req.Name); err != nil {
@@ -60,6 +67,8 @@ func UpdateDevice(c *gin.Context) {
 		req          UpdateDeviceReq
 		id           int
 		updateDevice entity.Device
+		curDevice    entity.Device
+		curArea      entity.Area
 	)
 	defer func() {
 		response.HandleResponse(c, err, nil)
@@ -75,7 +84,7 @@ func UpdateDevice(c *gin.Context) {
 		return
 	}
 
-	if _, err = entity.GetDeviceByID(id); err != nil {
+	if curDevice, err = entity.GetDeviceByID(id); err != nil {
 		err = errors.New(status.DeviceNotExist)
 		return
 	}
@@ -85,13 +94,25 @@ func UpdateDevice(c *gin.Context) {
 		err = errors.Wrap(err, status.Deny)
 		return
 	}
+
+	if curArea, err = entity.GetAreaByID(curDevice.AreaID); err != nil {
+		return
+	}
+
 	if updateDevice, err = req.Validate(); err != nil {
 		return
 	}
 
-	if req.LocationID == 0 {
+	if req.LocationID == 0 && entity.IsHome(curArea.AreaType){
 		// 未勾选房间, 设备与房间解绑
 		if err = entity.UnBindLocationDevice(id); err != nil {
+			return
+		}
+	}
+
+	if req.DepartmentID == 0 && entity.IsCompany(curArea.AreaType) {
+		// 未勾选房间, 设备与部门解绑
+		if err = entity.UnBindDepartmentDevice(id); err != nil {
 			return
 		}
 	}

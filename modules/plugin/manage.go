@@ -18,21 +18,29 @@ type Manager interface {
 	GetPlugin(id string) (*Plugin, error)
 }
 
+// DeviceConfig 插件设备配置
 type DeviceConfig struct {
-	Device
-	PluginID string
+	Model string     `json:"model" yaml:"model"`
+	Name  string     `json:"name" yaml:"name"`
+	Type  DeviceType `json:"type" yaml:"type"` // 设备类型
+
+	Logo         string `json:"logo" yaml:"logo"`                 // 设备logo相对路径
+	Control      string `json:"control" yaml:"control"`           // 设备控制页面相对路径
+	Provisioning string `json:"provisioning" yaml:"provisioning"` // 设备置网页面相对路径
+	PluginID     string `json:"-"`
 }
 
 // Client 与插件服务交互的客户端
 type Client interface {
 	DevicesDiscover(ctx context.Context) <-chan DiscoverResponse
-	GetAttributes(device entity.Device) (DeviceAttributes, error)
+	GetAttributes(device entity.Device) (DeviceInstances, error)
 	SetAttributes(device entity.Device, data json.RawMessage) (result []byte, err error)
-	HealthCheck(entity.Device) error
 	IsOnline(entity.Device) bool
 
+	OTA(d entity.Device, firmwareURL string) error
+
 	// Connect 连接设备
-	Connect(identity, pluginID string, authParams map[string]string) (DeviceAttributes, error)
+	Connect(identity, pluginID string, authParams map[string]string) (DeviceInstances, error)
 	// Disconnect 与设备断开连接
 	Disconnect(identity, pluginID string, authParams map[string]string) error
 

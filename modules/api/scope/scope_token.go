@@ -27,8 +27,8 @@ type scopeTokenResp struct {
 }
 
 var (
-	expiresIn     = time.Hour * 24 * 30
-	cloudExpireIn = expiresIn * 6 // 用于云端控制，时间稍微设长一点
+	ExpiresIn     = time.Hour * 24 * 30
+	cloudExpireIn = ExpiresIn * 6 // 用于云端控制，时间稍微设长一点
 )
 
 type scopeTokenReq struct {
@@ -86,7 +86,7 @@ func scopeToken(c *gin.Context) {
 		uID = u.ID
 	}
 
-	expireTime := expiresIn
+	expireTime := ExpiresIn
 	if c.GetHeader(types.VerificationKey) != "" {
 		expireTime = cloudExpireIn
 	}
@@ -108,7 +108,7 @@ func scopeToken(c *gin.Context) {
 	// TODO 使用oauth2生成scope_token，后续需要与前端联调去除
 	tokenInfo, err := oauth.GetOauthServer().GetAuthorizeToken(tgr)
 	if err != nil {
-		logger.Printf("get oauth2 token error %s", err.Error())
+		logger.Errorf("get oauth2 token error %s", err.Error())
 		err = errors.Wrap(err, errors.BadRequest)
 		return
 	}

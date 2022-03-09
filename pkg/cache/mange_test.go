@@ -47,3 +47,11 @@ func TestGetStore(t *testing.T) {
 
 	assert.IsType(t, new(store.GoCacheStore), s)
 }
+
+func TestSetNX(t *testing.T) {
+	ok := SetNX("my-key", "my-value", 0)
+	assert.Equal(t, true, ok)
+
+	ok = SetNX("my-key", "my-value", 0)
+	assert.Equal(t, false, ok)
+}

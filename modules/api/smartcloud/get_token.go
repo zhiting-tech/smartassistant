@@ -1,10 +1,14 @@
 package smartcloud
 
 import (
-	"github.com/sirupsen/logrus"
+	"github.com/zhiting-tech/smartassistant/modules/api/scope"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth"
 	"github.com/zhiting-tech/smartassistant/modules/types"
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
+	"gopkg.in/oauth2.v3"
+	"gopkg.in/oauth2.v3/server"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
@@ -15,7 +19,8 @@ import (
 )
 
 const (
-	AuthToken = "Auth-Token"
+	sAUserTokenType        = 1 // sa用户的token类型标识
+	cloudDiskUserTokenType = 2 // SA用户的网盘token类型标识
 )
 
 type GetTokenResp struct {
@@ -38,30 +43,45 @@ func updateToken(userID int, areaID uint64, c *gin.Context) (resp GetTokenResp, 
 	return
 }
 
+type GetTokenReq struct {
+	Type   int `uri:"type"`
+	UserID int `uri:"id"`
+}
+
 // 获取找回用户凭证
 func GetToken(c *gin.Context) {
 	var (
 		err  error
 		resp GetTokenResp
-		uID  int
+		req  GetTokenReq
 	)
 
 	defer func() {
 		response.HandleResponse(c, err, resp)
 	}()
 
-	uID, err = strconv.Atoi(c.Param("id"))
-	if err != nil {
+	if err = c.BindUri(&req); err != nil {
 		err = errors.Wrap(err, errors.BadRequest)
 		return
 	}
 
-	logrus.Info("areaToken in request Header: ", c.GetHeader(types.SATokenKey))
-	userInfo, err := entity.GetUserByID(uID)
+	userInfo, err := entity.GetUserByID(req.UserID)
 	if err != nil {
 		err = errors.Wrap(err, status.AccountNotExistErr)
 		return
 	}
+
+	switch req.Type {
+	case sAUserTokenType:
+		resp, err = UpdateSAUserToken(userInfo, c)
+	case cloudDiskUserTokenType:
+		resp, err = GetCloudDiskToken(userInfo, c)
+	default:
+		err = errors.New(errors.BadRequest)
+	}
+}
+
+func UpdateSAUserToken(userInfo entity.User, c *gin.Context) (resp GetTokenResp, err error) {
 	// 获取配置
 	setting := entity.GetDefaultUserCredentialFoundSetting()
 	if err = entity.GetSetting(entity.UserCredentialFoundType, &setting, userInfo.AreaID); err != nil {
@@ -74,5 +94,51 @@ func GetToken(c *gin.Context) {
 		err = errors.New(status.GetUserTokenDeny)
 		return
 	}
-	resp, err = updateToken(uID, userInfo.AreaID, c)
+	resp, err = updateToken(userInfo.ID, userInfo.AreaID, c)
+	return
+}
+
+func GetCloudDiskToken(userInfo entity.User, c *gin.Context) (resp GetTokenResp, err error) {
+	// 获取配置
+	setting := entity.GetDefaultCloudDiskCredentialSetting()
+	if err = entity.GetSetting(entity.GetCloudDiskCredential, &setting, userInfo.AreaID); err != nil {
+		err = errors.Wrap(err, errors.InternalServerErr)
+		return
+	}
+
+	// 判断是否允许找回找回凭证
+	if !setting.GetCloudDiskCredentialSetting {
+		err = errors.New(status.GetCloudDiskTokenDeny)
+		return
+	}
+	resp, err = getCloudDiskToken(userInfo, c)
+	return
+
+}
+
+func getCloudDiskToken(userInfo entity.User, c *gin.Context) (resp GetTokenResp, err error) {
+	saClient, err := entity.GetSAClient()
+	if err != nil {
+		return
+	}
+
+	c.Request.Header.Set(types.AreaID, strconv.FormatUint(userInfo.AreaID, 10))
+	c.Request.Header.Set(types.UserKey, userInfo.Key)
+	tgr := &server.AuthorizeRequest{
+		ResponseType:   oauth2.Token,
+		ClientID:       saClient.ClientID,
+		UserID:         strconv.Itoa(userInfo.ID),
+		Scope:          strings.Join([]string{"user", "area"}, ","),
+		AccessTokenExp: scope.ExpiresIn,
+		Request:        c.Request,
+	}
+
+	tokenInfo, err := oauth.GetOauthServer().GetAuthorizeToken(tgr)
+	if err != nil {
+		logger.Errorf("get oauth2 token error %s", err.Error())
+		err = errors.Wrap(err, errors.BadRequest)
+		return
+	}
+	resp.Token = tokenInfo.GetAccess()
+	return
 }

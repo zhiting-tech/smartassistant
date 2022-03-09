@@ -32,15 +32,16 @@ func (m *manager) GetPlugin(id string) (p *Plugin, err error) {
 		return
 	}
 	p = &Plugin{
-		Name:        plg.Name,
-		ID:          plg.Domain,
-		Image:       plg.Image,
-		Version:     plg.Version,
-		Brand:       plg.Brand,
-		Info:        plg.Intro,
-		DownloadURL: "",
-		Source:      entity.SourceTypeDefault,
-		AreaID:      area.ID,
+		Config: Config{
+			Name:    plg.Name,
+			Version: plg.Version,
+			Info:    plg.Intro,
+		},
+		ID:     plg.UID,
+		Image:  plg.Image,
+		Brand:  plg.Brand,
+		Source: entity.SourceTypeDefault,
+		AreaID: area.ID,
 	}
 	return
 }
@@ -73,15 +74,16 @@ func (m *manager) loadDefaultPlugins() (plugins []Plugin, err error) {
 
 	for _, plg := range plgs {
 		p := Plugin{
-			Name:        plg.Name,
-			ID:          plg.Domain,
-			Image:       plg.Image,
-			Version:     plg.Version,
-			Brand:       plg.Brand,
-			Info:        plg.Intro,
-			DownloadURL: "",
-			AreaID:      m.areaID,
-			Source:      entity.SourceTypeDefault,
+			Config: Config{
+				Name:    plg.Name,
+				Version: plg.Version,
+				Info:    plg.Intro,
+			},
+			ID:     plg.UID,
+			Image:  plg.Image,
+			Brand:  plg.Brand,
+			AreaID: m.areaID,
+			Source: entity.SourceTypeDefault,
 		}
 		plugins = append(plugins, p)
 	}

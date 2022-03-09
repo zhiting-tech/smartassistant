@@ -7,9 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zhiting-tech/smartassistant/modules/device"
+
 	"github.com/google/uuid"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
-	"github.com/zhiting-tech/smartassistant/modules/plugin"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
 )
 
@@ -61,7 +62,7 @@ func (item *Task) WithWrapper(wrappers ...WrapperFunc) *Task {
 // Run 执行
 // TODO
 func (item *Task) Run() {
-	logger.Info("Run ", item.ToString())
+	logger.Debug("Run ", item.ToString())
 	if item.f != nil {
 		f := item.f
 		for _, wrapper := range item.wrappers {
@@ -162,7 +163,7 @@ func IsConditionSatisfied(condition entity.SceneCondition) bool {
 		return false
 	}
 
-	device, err := entity.GetDeviceByID(condition.DeviceID)
+	d, err := entity.GetDeviceByID(condition.DeviceID)
 	if err != nil {
 		logger.Errorf("get device %d err:%v\n", condition.DeviceID, err)
 		return false
@@ -173,34 +174,16 @@ func IsConditionSatisfied(condition entity.SceneCondition) bool {
 		logger.Error("Unmarshal error:", err)
 		return false
 	}
-	attribute, err := plugin.GetControlAttributeByID(device, item.InstanceID, item.Attribute.Attribute)
+	shadow, err := device.GetShadow(d)
 	if err != nil {
 		logger.Error("GetAttribute error:", err)
 		return false
 	}
-	val := attribute.Val
-	logger.Debugf("%v %s %v\n", val, condition.Operator, item.Val)
-	switch condition.Operator {
-	case entity.OperatorEQ:
-		return val == item.Val
-	case entity.OperatorGT:
-		switch val.(type) {
-		case int:
-			return val.(int) > item.Val.(int)
-		case float64:
-			return val.(float64) > item.Val.(float64)
-		default:
-			return false
-		}
-	case entity.OperatorLT:
-		switch val.(type) {
-		case int:
-			return val.(int) < item.Val.(int)
-		case float64:
-			return val.(float64) < item.Val.(float64)
-		default:
-			return false
-		}
+	val, err := shadow.Get(item.InstanceID, item.Attribute.Attribute)
+	if err != nil {
+		logger.Error("shadow get attribute error:", err)
+		return false
 	}
-	return false
+	logger.Debugf("%v %s %v\n", val, condition.Operator, item.Val)
+	return item.Operate(condition.Operator, val)
 }

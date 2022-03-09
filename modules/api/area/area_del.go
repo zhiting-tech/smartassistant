@@ -1,8 +1,11 @@
 package area
 
 import (
-	"github.com/zhiting-tech/smartassistant/modules/api/utils/cloud"
+	"github.com/zhiting-tech/smartassistant/modules/api/extension"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/clouddisk"
+	"github.com/zhiting-tech/smartassistant/modules/types"
+	"github.com/zhiting-tech/smartassistant/modules/types/status"
+	"github.com/zhiting-tech/smartassistant/modules/utils/session"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -21,9 +24,10 @@ func DelArea(c *gin.Context) {
 		id  uint64
 		err error
 		req DelAreaReq
+		resp clouddisk.DelAreaStatus
 	)
 	defer func() {
-		response.HandleResponse(c, err, nil)
+		response.HandleResponse(c, err, resp)
 	}()
 
 	id, err = strconv.ParseUint(c.Param("id"), 10, 64)
@@ -42,15 +46,28 @@ func DelArea(c *gin.Context) {
 		return
 	}
 
-	if req.IsDelCloudDisk != nil && *req.IsDelCloudDisk {
-		// FIXME 云端没有网盘
-		clouddisk.DelAreaCloudDisk(c, id)
-	}
-
-	if err = entity.DelAreaByID(id); err != nil {
-		err = errors.Wrap(err, errors.InternalServerErr)
+	if !entity.IsOwnerOfArea(session.Get(c).UserID, id) {
+		err = errors.New(status.Deny)
 		return
 	}
-	cloud.RemoveSA(id)
+
+	isDelCloudDiskFile := req.IsDelCloudDisk != nil && *req.IsDelCloudDisk
+	resp, err = ProcessDelArea(c, id, isDelCloudDiskFile)
+	return
+}
+
+func ProcessDelArea(c *gin.Context, areaID uint64, isDelCloudDiskFile bool) (resp clouddisk.DelAreaStatus, err error){
+	if !extension.HasExtension(types.CloudDisk) {
+		err = clouddisk.DelArea(areaID)
+		resp.RemoveStatus = clouddisk.CloudDiskDelSuccess
+		return
+	}
+
+	// FIXME 云端没有网盘
+	result, err := clouddisk.DelAreaCloudDisk(c, isDelCloudDiskFile, areaID)
+	if err != nil {
+		return
+	}
+	resp.RemoveStatus = result.Data.RemoveStatus
 	return
 }

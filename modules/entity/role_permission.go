@@ -2,6 +2,7 @@ package entity
 
 import (
 	"fmt"
+	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/attribute"
 	"gorm.io/gorm"
 
 	"github.com/zhiting-tech/smartassistant/modules/types"
@@ -9,7 +10,7 @@ import (
 
 type ActionType string
 
-// RolePermission
+// RolePermission 角色权限role_tmpl
 type RolePermission struct {
 	ID        int
 	RoleID    int  `gorm:"index:permission,unique"` // 角色
@@ -54,6 +55,7 @@ func (up UserPermissions) IsOwner() bool {
 	return up.isOwner
 }
 
+// IsDeviceControlPermit 判断设备是否可控制
 func (up UserPermissions) IsDeviceControlPermit(deviceID int) bool {
 	if up.isOwner {
 		return true
@@ -67,6 +69,7 @@ func (up UserPermissions) IsDeviceControlPermit(deviceID int) bool {
 	return false
 }
 
+// IsDeviceAttrControlPermit 判断设备的属性是否有权限
 func (up UserPermissions) IsDeviceAttrControlPermit(deviceID, instanceID int, attr string) bool {
 	if up.isOwner {
 		return true
@@ -81,8 +84,13 @@ func (up UserPermissions) IsDeviceAttrControlPermit(deviceID, instanceID int, at
 	return false
 }
 
+// IsDeviceAttrPermit 判断设备的属性是否有权限
 func (up UserPermissions) IsDeviceAttrPermit(deviceID int, attr Attribute) bool {
 	if up.isOwner {
+		return true
+	}
+	// 如果设备的属性是只读，例如传感器，则默认有权限（这种属性，不需要权限控制）
+	if attr.Permission == attribute.AttrPermissionOnlyRead {
 		return true
 	}
 	for _, p := range up.ps {
@@ -92,8 +100,10 @@ func (up UserPermissions) IsDeviceAttrPermit(deviceID int, attr Attribute) bool 
 			return true
 		}
 	}
+
 	return false
 }
+
 func (up UserPermissions) IsPermit(tp types.Permission) bool {
 	if up.isOwner {
 		return true

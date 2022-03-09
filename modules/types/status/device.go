@@ -14,6 +14,7 @@ const (
 	AlreadyDataSync
 	ForbiddenBindOtherSA
 	ForbiddenRemoveSADevice
+	DeviceTypeNotExist
 )
 
 func init() {
@@ -27,4 +28,5 @@ func init() {
 	errors.NewCode(AlreadyDataSync, "数据已同步,禁止多次同步数据")
 	errors.NewCode(ForbiddenBindOtherSA, "已有SA，不允许添加其他SA")
 	errors.NewCode(ForbiddenRemoveSADevice, "不允许删除SA设备")
+	errors.NewCode(DeviceTypeNotExist, "设备类型不存在")
 }

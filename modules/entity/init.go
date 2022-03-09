@@ -13,7 +13,6 @@ import (
 
 	"github.com/zhiting-tech/smartassistant/modules/config"
 	"gorm.io/driver/postgres"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -24,7 +23,7 @@ var once sync.Once
 var Tables []interface{} = []interface{}{
 	Device{}, Location{}, Area{}, Role{}, RolePermission{},
 	User{}, UserRole{}, Scene{}, SceneCondition{},
-	SceneTask{}, TaskLog{}, GlobalSetting{}, PluginInfo{}, Client{},
+	SceneTask{}, TaskLog{}, GlobalSetting{}, PluginInfo{}, Client{}, Department{}, DepartmentUser{},
 }
 
 func GetDB() *gorm.DB {
@@ -44,7 +43,7 @@ func loadDB() {
 	case "sqlite":
 		dsn = filepath.Join(config.GetConf().SmartAssistant.DataPath(),
 			"smartassistant", "sadb.db")
-		dialect = sqlite.Open(dsn)
+		dialect = Open(dsn)
 	case "postgres", "postgresql":
 		format := "host=%s port=%d user=%s password=%s dbname=%s sslmode=%s"
 		dsn = fmt.Sprintf(format, database.Host, database.Port, database.Username,
@@ -79,7 +78,7 @@ func loadDB() {
 }
 
 func OpenSqlite(path string, enableForeign bool) (*gorm.DB, error) {
-	dialect := sqlite.Open(path)
+	dialect := Open(path)
 	sqldb, err := gorm.Open(dialect, &gorm.Config{
 		DisableForeignKeyConstraintWhenMigrating: !enableForeign,
 	})

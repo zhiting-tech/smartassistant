@@ -15,8 +15,6 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/zhiting-tech/smartassistant/modules/config"
-
 	"github.com/hashicorp/go-version"
 	jsoniter "github.com/json-iterator/go"
 
@@ -64,8 +62,6 @@ func (c *Client) GetImageNewestTag(img Image) (tag string, err error) {
 	if err != nil {
 		return
 	}
-	conf := config.GetConf().Docker
-	req.SetBasicAuth(conf.Username, conf.Password)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return
@@ -97,11 +93,11 @@ func (c *Client) IsImageAdd(refStr string) (isAdded bool) {
 	ctx := context.Background()
 	inspect, b, err := c.DockerClient.ImageInspectWithRaw(ctx, refStr)
 	if err != nil {
-		logger.Println(err)
+		logger.Error(err)
 		return
 	}
-	logger.Println(inspect)
-	logger.Println(string(b))
+	logger.Debug(inspect)
+	logger.Debug(string(b))
 	return true
 }
 
@@ -109,7 +105,7 @@ func (c *Client) IsImageAdd(refStr string) (isAdded bool) {
 func (c *Client) Pull(refStr string) (err error) {
 	logger.Info("pulling image: ", refStr)
 	ctx := context.Background()
-	readCloser, err := c.DockerClient.ImagePull(ctx, refStr, types.ImagePullOptions{RegistryAuth: c.authStr})
+	readCloser, err := c.DockerClient.ImagePull(ctx, refStr, types.ImagePullOptions{})
 	if err != nil {
 		logger.Warning(err)
 		return
@@ -199,7 +195,7 @@ func (c *Client) BuildFromTar(tar io.Reader, tag string) (imageID string, err er
 		}
 		if strings.HasPrefix(res.Stream, "Successfully built") {
 			imageID = strings.TrimRight(strings.TrimPrefix(res.Stream, "Successfully built "), "\n")
-			logrus.Println("image id:", imageID)
+			logrus.Debug("image id:", imageID)
 		}
 	}
 

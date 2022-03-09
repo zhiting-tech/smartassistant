@@ -1,0 +1,32 @@
+<source>
+  @type forward
+</source>
+
+<filter smartassistant.*>
+  @type parser
+  key_name log
+  reserve_time true
+  <parse>
+    @type json
+    time_key time
+    time_type string
+    time_format %Y-%m-%dT%H:%M:%S
+    keep_time_key true
+  </parse>
+</filter>
+
+<match smartassistant.*>
+    @type copy
+    <store>
+        @type stdout
+    </store>
+    <store>
+         @type file
+         <format>
+          @type json
+         </format>
+         path /var/log/smartassistant
+        flush_interval 1s
+         append true
+     </store>
+</match>

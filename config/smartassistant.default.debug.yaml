@@ -1,0 +1,15 @@
+debug: true
+smartcloud:
+    tls: false
+
+smartassistant:
+    host: 0.0.0.0
+    port: 37965
+    database:
+        driver: "sqlite"
+    host_runtime_path: "./"
+    runtime_path: "./" # runtime_path 为 smartassistant 容器中运行时目录
+    docker_registry: "zt.registry.zhitingtech.com"
+
+extension:
+    grpc_port: 9666

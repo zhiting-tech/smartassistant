@@ -7,6 +7,8 @@ import (
 	"github.com/dgrijalva/jwt-go"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/types"
+	"github.com/zhiting-tech/smartassistant/modules/types/status"
+	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"gopkg.in/oauth2.v3"
 	"strconv"
 	"strings"
@@ -28,6 +30,7 @@ type JWTAccessClaims struct {
 	ClientID        string `json:"client_id,omitempty"`
 	Scope           string `json:"scope,omitempty"`
 	CodeCreateAt    int64  `json:"code_create_at,omitempty"`
+	GrantType		string `json:"grant_type,omitempty"`
 }
 
 // Valid claims verification
@@ -61,6 +64,7 @@ type JWTAccessGenerate struct {
 // Token based on the UUID generated token
 func (a *JWTAccessGenerate) Token(data *oauth2.GenerateBasic, isGenRefresh bool) (string, string, error) {
 	areaID, _ := strconv.ParseUint(data.Request.Header.Get(types.AreaID), 10, 64)
+	grantType := data.Request.Header.Get(types.GrantType)
 	var userID int
 	if data.UserID != "" {
 		var uerr error
@@ -75,6 +79,7 @@ func (a *JWTAccessGenerate) Token(data *oauth2.GenerateBasic, isGenRefresh bool)
 		AreaID:   areaID,
 		ClientID: data.TokenInfo.GetClientID(),
 		Scope:    data.TokenInfo.GetScope(),
+		GrantType: grantType,
 	}
 
 	userKey := data.Request.Header.Get(types.UserKey)
@@ -145,6 +150,16 @@ func ParseJwt(access string) (*JWTAccessClaims, error) {
 				return nil, err
 			}
 			key = user.Key
+			switch oauth2.GrantType(claims.GrantType) {
+			case oauth2.PasswordCredentials:
+				if claims.AccessCreateAt < user.PasswordUpdateTime.Unix() {
+					return nil, errors.New(status.PasswordChanged)
+				}
+			case oauth2.Refreshing:
+				if claims.RefreshCreateAt < user.PasswordUpdateTime.Unix() {
+					return nil, errors.New(status.PasswordChanged)
+				}
+			}
 		} else {
 			// 是否客户端模式授权,client key 加密的
 			clientID := claims.ClientID

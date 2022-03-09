@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/sirupsen/logrus"
+	"github.com/zhiting-tech/smartassistant/modules/event"
 	"github.com/zhiting-tech/smartassistant/modules/types"
 	"io"
 	"io/ioutil"
@@ -25,7 +27,7 @@ import (
 var NotExistErr = errors.New("plugin not exist")
 
 const (
-	healthCheckInternal = time.Second * 10 // 存活检查间隔
+	healthCheckInterval = time.Second * 10 // 存活检查间隔
 	offlineTimeout      = time.Second * 15 // 超过这个时间没有响应在线判断为离线
 )
 
@@ -41,11 +43,8 @@ func (c *client) DeviceConfigs() (configs []DeviceConfig) {
 
 	for _, cli := range c.clients {
 		for _, d := range cli.PluginConf.SupportDevices {
-			conf := DeviceConfig{
-				Device:   *d,
-				PluginID: cli.PluginConf.ID,
-			}
-			configs = append(configs, conf)
+			d.PluginID = cli.pluginID
+			configs = append(configs, d)
 		}
 	}
 	return
@@ -65,9 +64,8 @@ func (c *client) DeviceConfig(d entity.Device) (config DeviceConfig) {
 		if d.Model != sd.Model {
 			continue
 		}
-		config.Device = *sd
-		config.PluginID = cli.PluginConf.ID
-		return
+		sd.PluginID = cli.pluginID
+		return sd
 	}
 	return
 }
@@ -120,19 +118,6 @@ func (c *client) Add(cli *pluginClient) {
 	c.clients[cli.pluginID] = cli
 	c.mu.Unlock()
 	go c.ListenStateChange(cli.pluginID)
-	// 查找该插件所有的设备
-	devices, err := entity.GetDevicesByPluginID(cli.pluginID)
-	if err != nil {
-		return
-	}
-	for _, device := range devices {
-		// 监听所有设备是否在线
-		go func(d entity.Device) {
-			if err := c.HealthCheck(d); err != nil {
-				logger.Error(err)
-			}
-		}(device)
-	}
 }
 
 func (c *client) Remove(pluginID string) error {
@@ -148,7 +133,7 @@ func (c *client) Remove(pluginID string) error {
 
 // DevicesDiscover 发现设备，并且通过 channel 返回给调用者
 func (c *client) DevicesDiscover(ctx context.Context) <-chan DiscoverResponse {
-	out := make(chan DiscoverResponse, 1)
+	out := make(chan DiscoverResponse, 10)
 	go func() {
 		var wg sync.WaitGroup
 		for _, cli := range c.clients {
@@ -171,45 +156,60 @@ func (c *client) ListenStateChange(pluginID string) {
 	if err != nil {
 		return
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cli.cancel = cancel
-	pdc, err := cli.protoClient.StateChange(ctx, &proto.Empty{})
+	pdc, err := cli.protoClient.StateChange(cli.ctx, &proto.Empty{})
 	if err != nil {
 		logger.Error("state onDeviceStateChange error:", err)
 		return
 	}
 	logger.Println("StateChange recv...")
 	for {
-		resp, err := pdc.Recv()
+		var resp *proto.State
+		resp, err = pdc.Recv()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			logger.Println(err)
+			logger.Error(err)
 			// TODO retry
 			break
 		}
 		logger.Debugf("get state onDeviceStateChange resp: %s,%d,%s\n",
 			resp.Identity, resp.InstanceId, string(resp.Attributes))
-		var attr server.Attribute
-		_ = json.Unmarshal(resp.Attributes, &attr)
-		d, err := entity.GetPluginDevice(cli.areaID, cli.pluginID, resp.Identity)
-		if err != nil {
-			logger.Errorf("ListenStateChange error:%s", err.Error())
-			continue
-		}
 
-		for _, callback := range c.stateChangeCallbacks {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logrus.Error(r)
+				}
+			}()
+			var d entity.Device
+
+			// 查看是否存在对应的子设备, 如果存在，则本次推送，是子设备
+			sonDeviceIdentity := fmt.Sprintf("childDevice-%s-%d", resp.Identity, resp.InstanceId)
+			sonDevice, err := entity.GetPluginDevice(cli.areaID, cli.pluginID, sonDeviceIdentity)
+			if err == nil {
+				d = sonDevice
+			} else {
+				// 如果不存在对应的子设备，则代表推送的是本身的设备
+				d, err = entity.GetPluginDevice(cli.areaID, cli.pluginID, resp.Identity)
+				if err != nil {
+					logger.Errorf("ListenStateChange error:%s", err.Error())
+					return
+				}
+			}
+
+			var attr server.Attribute
+			_ = json.Unmarshal(resp.Attributes, &attr)
 			a := entity.Attribute{
 				Attribute:  attr,
 				InstanceID: int(resp.InstanceId),
 			}
-			go func(cb OnDeviceStateChange) {
-				if err := cb(d, a); err != nil {
-					logger.Errorf("state change callback err: %s", err.Error())
-				}
-			}(callback)
-		}
+
+			em := event.NewEventMessage(event.AttributeChange, d.AreaID)
+			em.SetDeviceID(d.ID)
+			em.SetAttr(a)
+			event.GetServer().Notify(em)
+		}()
 	}
 	logger.Println("StateChangeFromPlugin exit")
 }
@@ -234,8 +234,44 @@ func (c *client) SetAttributes(d entity.Device, data json.RawMessage) (result []
 	return
 }
 
+func (c *client) OTA(d entity.Device, firmwareURL string) (err error) {
+	req := proto.OTAReq{
+		Identity:    d.Identity,
+		FirmwareUrl: firmwareURL,
+	}
+	logger.Debugf("ota: %s, firmware url: %s", d.Identity, firmwareURL)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*10)
+	defer cancel()
+	cli, err := c.get(d.PluginID)
+	if err != nil {
+		return
+	}
+	otaCli, err := cli.protoClient.OTA(ctx, &req)
+	if err != nil {
+		return
+	}
+
+	for {
+		var resp *proto.OTAResp
+		resp, err = otaCli.Recv()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return errors.New("ota err, eof")
+			}
+			return
+		}
+		logrus.Debug("ota response:", resp.Identity, resp.Step)
+		if resp.Step >= 100 {
+			return nil
+		}
+		if resp.Step < 0 {
+			return fmt.Errorf("ota err, step: %d", resp.Step)
+		}
+	}
+}
+
 // Connect 连接设备
-func (c *client) Connect(identity, pluginID string, authParams map[string]string) (das DeviceAttributes, err error) {
+func (c *client) Connect(identity, pluginID string, authParams map[string]string) (das DeviceInstances, err error) {
 	req := proto.AuthReq{
 		Identity: identity,
 		Params:   authParams,
@@ -256,7 +292,7 @@ func (c *client) Connect(identity, pluginID string, authParams map[string]string
 	return
 }
 
-func parseAttrsResp(identity string, resp *proto.GetAttributesResp) DeviceAttributes {
+func parseAttrsResp(identity string, resp *proto.GetAttributesResp) DeviceInstances {
 
 	var instances []Instance
 	for _, instance := range resp.Instances {
@@ -269,15 +305,16 @@ func parseAttrsResp(identity string, resp *proto.GetAttributesResp) DeviceAttrib
 		}
 		instances = append(instances, i)
 	}
-	return DeviceAttributes{
-		Identity:  identity,
-		Instances: instances,
+	return DeviceInstances{
+		Identity:   identity,
+		Instances:  instances,
+		OTASupport: resp.OtaSupport,
 	}
 }
 
-func (c *client) GetAttributes(d entity.Device) (das DeviceAttributes, err error) {
+func (c *client) GetAttributes(d entity.Device) (das DeviceInstances, err error) {
 	req := proto.GetAttributesReq{Identity: d.Identity}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
 	cli, err := c.get(d.PluginID)
@@ -293,31 +330,13 @@ func (c *client) GetAttributes(d entity.Device) (das DeviceAttributes, err error
 	return
 }
 
-func (c *client) HealthCheck(d entity.Device) (err error) {
-	cli, err := c.get(d.PluginID)
-	if err != nil {
-		return
-	}
-	return cli.HealthCheck(d.Identity)
-}
-
 func (c *client) IsOnline(d entity.Device) bool {
 	cli, err := c.get(d.PluginID)
 	if err != nil {
+		logger.Warningf("get plugin %s error: %s", d.PluginID, err)
 		return false
 	}
 	return cli.IsOnline(d.Identity)
-}
-
-type pluginClient struct {
-	areaID      uint64
-	pluginID    string
-	protoClient proto.PluginClient // 请求插件服务的grpc客户端
-	cancel      context.CancelFunc
-	ctx         context.Context
-	PluginConf  Plugin
-
-	deviceLastOnlineTime sync.Map
 }
 
 func newClient(areaID uint64, plgID, key string, plgConf Plugin) (*pluginClient, error) {
@@ -344,6 +363,18 @@ func newClient(areaID uint64, plgID, key string, plgConf Plugin) (*pluginClient,
 	}, nil
 }
 
+type pluginClient struct {
+	areaID      uint64
+	pluginID    string
+	protoClient proto.PluginClient // 请求插件服务的grpc客户端
+	cancel      context.CancelFunc
+	ctx         context.Context
+	PluginConf  Plugin
+
+	healthCheckDevice    sync.Map // 记录有存活检查的设备，防止重复发起存活检查
+	deviceLastOnlineTime sync.Map // 记录每个设备上次在线时间
+}
+
 func (pc *pluginClient) Stop() {
 	if pc.cancel != nil {
 		pc.cancel()
@@ -357,6 +388,8 @@ func (pc *pluginClient) DeviceDiscover(ctx context.Context, out chan<- DiscoverR
 		logger.Warning(err)
 		return
 	}
+	var wg sync.WaitGroup
+	defer wg.Wait()
 	for {
 		select {
 		case <-pc.ctx.Done():
@@ -370,47 +403,79 @@ func (pc *pluginClient) DeviceDiscover(ctx context.Context, out chan<- DiscoverR
 			}
 			if err != nil {
 				logger.Error(err)
+				time.Sleep(time.Second)
 				continue
 			}
-			// 设备是否在线
-			if err = pc.healthCheck(resp.Identity); err != nil {
-				logger.Error(err)
-				continue
-			}
-			if !pc.IsOnline(resp.Identity) {
-				continue
-			}
+			wg.Add(1)
+			go func(d *proto.Device) {
+				defer wg.Done()
+				// 设备是否在线
+				if !pc.IsOnline(d.Identity) {
+					return
+				}
 
-			device := DiscoverResponse{
-				Identity:     resp.Identity,
-				Model:        resp.Model,
-				Manufacturer: resp.Manufacturer,
-				Name:         fmt.Sprintf("%s_%s", resp.Manufacturer, resp.Model),
-				PluginID:     pc.pluginID,
-				AuthRequired: resp.AuthRequired,
-			}
-			out <- device
+				device := DiscoverResponse{
+					Identity:     d.Identity,
+					Model:        d.Model,
+					Manufacturer: d.Manufacturer,
+					Name:         fmt.Sprintf("%s_%s", d.Manufacturer, d.Model),
+					PluginID:     pc.pluginID,
+					AuthRequired: d.AuthRequired,
+				}
+				select {
+				case out <- device:
+				default:
+				}
+			}(resp)
+
 		}
 	}
 }
 
-// HealthCheck 监听设备的在线状态
-func (pc *pluginClient) HealthCheck(identity string) error {
-
-	_, loaded := pc.deviceLastOnlineTime.Load(identity)
-	if loaded { // 已经监听了则直接返回,防止重复
-		return nil
+// IsOnline 设备是否在线
+// 根据缓存判断是否在线，不在线则同步发起请求
+func (pc *pluginClient) IsOnline(identity string) bool {
+	// 每个设备都开启一个goroutine持续判断是否在线，防止并发请求导致运行多个goroutine
+	_, loaded := pc.healthCheckDevice.LoadOrStore(identity, nil)
+	if !loaded {
+		go pc.healthChecking(identity)
 	}
-	logger.Debugf("%s start health check...", identity)
-	ticker := time.NewTicker(healthCheckInternal)
+
+	// 在线则直接返回，不在线则阻塞等待到恢复在线或超时
+	if pc.isOnline(identity) {
+		return true
+	}
+
+	timeout := time.NewTimer(time.Second * 10)
+	defer timeout.Stop()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-timeout.C:
+			return false
+		case <-ticker.C:
+			if err := pc.healthCheck(identity); err != nil {
+				logger.Errorf("%s health check err: %s", identity, err.Error())
+				return false
+			}
+			if pc.isOnline(identity) {
+				return true
+			}
+		}
+	}
+}
+
+func (pc *pluginClient) healthChecking(identity string) {
+	healthCheckTicker := time.NewTicker(healthCheckInterval)
 	for {
 		select {
 		case <-pc.ctx.Done():
 			logger.Debugf("%s health check done", identity)
-			return nil
-		case <-ticker.C:
+			return
+		case <-healthCheckTicker.C:
 			if err := pc.healthCheck(identity); err != nil {
-				logger.Errorf("%s HealthCheck err: %s", identity, err.Error())
+				logger.Errorf("%s health check err: %s", identity, err.Error())
 			}
 		}
 	}
@@ -426,13 +491,18 @@ func (pc *pluginClient) healthCheck(identity string) error {
 	if err != nil {
 		return err
 	}
+	if !pc.isOnline(identity) && resp.Online {
+		logger.Infof("%s %s back to online", pc.pluginID, identity)
+	}
 	if resp.Online {
 		pc.deviceLastOnlineTime.Store(identity, time.Now())
+	} else {
+		logger.Debugf("%s %s health check offline", pc.pluginID, identity)
 	}
 	return nil
 }
 
-func (pc *pluginClient) IsOnline(identity string) bool {
+func (pc *pluginClient) isOnline(identity string) bool {
 	if v, ok := pc.deviceLastOnlineTime.Load(identity); ok {
 		lastOnlineTime := v.(time.Time)
 		return lastOnlineTime.Add(offlineTimeout).After(time.Now())

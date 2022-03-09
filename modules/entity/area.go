@@ -2,6 +2,7 @@ package entity
 
 import (
 	errors2 "errors"
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
 	"gorm.io/gorm/schema"
 	"reflect"
 	"time"
@@ -17,13 +18,32 @@ const (
 	AreaIDFieldName = "AreaID"
 )
 
+type AreaType int
+
+func (at AreaType) String() string {
+	switch at {
+	case AreaOfCompany:
+		return "公司"
+	default:
+		return "家庭"
+	}
+}
+
+const (
+	AreaOfHome AreaType = iota + 1
+	AreaOfCompany
+)
+
 // Area 家庭
 type Area struct {
-	ID        uint64    `json:"id" gorm:"type:bigint"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"created_at"`
-	OwnerID   int       `json:"owner_id"`
-	Deleted   gorm.DeletedAt
+	ID             uint64    `json:"id" gorm:"type:bigint"`
+	Name           string    `json:"name"`
+	CreatedAt      time.Time `json:"created_at"`
+	OwnerID        int       `json:"owner_id"`
+	Deleted        gorm.DeletedAt
+	AreaType       AreaType `json:"area_type" gorm:"default:1"`
+	IsSendAuthToSC bool     `json:"-"`
+	IsBindCloud  bool  	`json:"is_bind_cloud"`
 }
 
 func (d Area) TableName() string {
@@ -62,10 +82,11 @@ func (d *Area) BeforeCreate(tx *gorm.DB) (err error) {
 	return nil
 }
 
-func CreateArea(name string) (area Area, err error) {
+func CreateArea(name string, areaType AreaType) (area Area, err error) {
 	if name != "" {
 		area.Name = name
 	}
+	area.AreaType = areaType
 	err = GetDB().Create(&area).Error
 	if err != nil {
 		return
@@ -107,8 +128,8 @@ func DelAreaByID(id uint64) (err error) {
 }
 
 // UpdateArea 修改Area名称后,同时需要修改location中旧名称
-func UpdateArea(id uint64, name string) (err error) {
-	err = GetDB().First(&Area{}, "id = ?", id).Update("name", name).Error
+func UpdateArea(id uint64, updates map[string]interface{}) (err error) {
+	err = GetDB().First(&Area{}, "id = ?", id).Updates(updates).Error
 	return
 }
 
@@ -128,12 +149,13 @@ func IsOwner(userID int) bool {
 
 // IsOwnerOfArea 是否是area拥有者
 func IsOwnerOfArea(userID int, areaID uint64) bool {
-	var count int64
-	GetDB().Model(&User{}).Where(User{ID: userID}).
-		Joins("inner join areas on users.area_id=areas.id and areas.owner_id=users.id").
-		Where(Area{ID: areaID}).
-		Count(&count)
-	return count > 0
+	var area Area
+	err := GetDB().Model(&Area{}).Where(Area{ID: areaID}).First(&area).Error
+	if err != nil {
+		logger.Warnf("IsOwnerOfArea err is %v", err)
+		return false
+	}
+	return area.OwnerID == userID
 }
 
 // GetAreaOwner 获取家庭的拥有者

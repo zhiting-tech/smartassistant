@@ -174,7 +174,7 @@ import (
 )
 
 func main() {
-	p := server.NewPluginServer("demo")
+	p := server.NewPluginServer()
 	go func() {
 		// 发现设备
 		d := NewDevice("abcdefg")

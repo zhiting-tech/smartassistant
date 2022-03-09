@@ -4,9 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/sirupsen/logrus"
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
 	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/attribute"
 	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/utils"
-	"log"
 	"sync"
 )
 
@@ -41,7 +41,7 @@ func (p *Manager) Init() {
 	}()
 }
 
-func (p *Manager) setAttributeNotify(identity string) error {
+func (p *Manager) SetAttributeNotify(identity string) error {
 	device, ok := p.devices.Load(identity)
 	if !ok {
 		return errors.New("setAttributeNotify error,no device found")
@@ -84,10 +84,43 @@ func (p *Manager) AddDevice(device Device) error {
 		logrus.Errorf("device setup err:%s", err.Error())
 		return err
 	}
-	logrus.Info("add device:", device.Info())
+	logrus.Debug("add device:", device.Info())
 
-	go p.WatchNotify(device)
-	return p.setAttributeNotify(device.Identity())
+	go p.WatchNotify(device.GetChannel())
+
+	return p.SetAttributeNotify(device.Identity())
+}
+
+func (p *Manager) IsOTASupport(identity string) (bool, error) {
+
+	d, ok := p.devices.Load(identity)
+	if !ok {
+		err := errors.New("device not exist")
+		return false, err
+	}
+
+	switch d.(type) {
+	case OTADevice:
+		return true, nil
+	default:
+		return false, nil
+	}
+}
+
+func (p *Manager) OTA(identity, firmwareURL string) (ch chan OTAResp, err error) {
+
+	d, ok := p.devices.Load(identity)
+	if !ok {
+		err = errors.New("device not exist")
+		return
+	}
+
+	switch v := d.(type) {
+	case OTADevice:
+		return v.OTA(firmwareURL)
+	default:
+		return
+	}
 }
 
 func (p *Manager) Auth(identity string, params map[string]string) (err error) {
@@ -119,16 +152,37 @@ func (p *Manager) Disconnect(identity string, params map[string]string) (err err
 }
 
 func (p *Manager) HealthCheck(identity string) bool {
-
-	device, ok := p.devices.Load(identity)
+	isChildDevice, pIdentity, instanceId := utils.ParserIdentity(identity)
+	var device interface{}
+	var ok bool
+	if isChildDevice {
+		// 如果是子设备，需要获取到父设备的信息
+		device, ok = p.devices.Load(pIdentity)
+	} else {
+		device, ok = p.devices.Load(identity)
+	}
 	if !ok {
+		logrus.Warnf("device %s not found", identity)
 		return false
 	}
-	return device.(Device).Online()
+	isOnline := device.(Device).Online()
+	// 如果不是子设备直接返回状态， 直接返回对应的状态
+	if !isChildDevice {
+		return isOnline
+	} else if isChildDevice && !isOnline {
+		// 如果是子设备，但是父设备不在线，则返回false
+		return false
+	}
+
+	// 需要判断一次子设备是否在线
+	childDevice := device.(ParentDevice).GetChildDeviceById(instanceId)
+	if childDevice != nil {
+		return childDevice.Online()
+	}
+	return false
 }
-func (p *Manager) WatchNotify(device Device) {
-	s := utils.Parse(device)
-	ch := device.GetChannel()
+
+func (p *Manager) WatchNotify(ch WatchChan) {
 
 	for {
 		select {
@@ -138,8 +192,15 @@ func (p *Manager) WatchNotify(device Device) {
 				logrus.Error(err)
 				return
 			}
+			d, err := p.getDevice(v.Identity)
+			if err != nil {
+				logrus.Error("device %s not found", v.Identity)
+				continue
+			}
+			s := utils.Parse(d)
 			attr := s.GetAttribute(v.InstanceID, v.Attr)
 			if attr == nil {
+				logrus.Warnln("instance's attr not found", v)
 				continue
 			}
 			if notifier, ok := attr.Model.(attribute.Notifier); ok {
@@ -190,12 +251,17 @@ func (p *Manager) Notify(identity string, instanceID int, attr *utils.Attribute)
 		default:
 		}
 
-		log.Println("notify", identity, instanceID, attr, val)
+		logger.Debug("notify", identity, instanceID, attr, val)
 		return nil
 	}
 }
 
 func (p *Manager) getDevice(identity string) (d Device, err error) {
+	// 如果是子设备，需要切换成读取父设备
+	isChildDevice, pIdentity, _ := utils.ParserIdentity(identity)
+	if isChildDevice {
+		identity = pIdentity
+	}
 
 	v, ok := p.devices.Load(identity)
 	if !ok {
@@ -215,6 +281,7 @@ func (p *Manager) getDevice(identity string) (d Device, err error) {
 	}
 	return
 }
+
 func (p *Manager) GetAttributes(identity string) (s []Instance, err error) {
 	device, err := p.getDevice(identity)
 	if err != nil {
@@ -223,6 +290,7 @@ func (p *Manager) GetAttributes(identity string) (s []Instance, err error) {
 	if err = device.Update(); err != nil { // update value
 		return
 	}
+
 	return p.getInstances(device), nil
 }
 
@@ -241,10 +309,11 @@ func (p *Manager) getInstances(device Device) (instances []Instance) {
 				continue
 			}
 			a := Attribute{
-				ID:        attr.ID,
-				Attribute: attr.Name,
-				Val:       attribute.ValueOf(attr.Model),
-				ValType:   attr.Type,
+				ID:         attr.ID,
+				Attribute:  attr.Name,
+				Val:        attribute.ValueOf(attr.Model),
+				ValType:    attr.Type,
+				Permission: attr.Permission,
 			}
 			if num, ok := attr.Model.(attribute.IntType); ok {
 				a.Min, a.Max = num.GetRange()
@@ -262,6 +331,7 @@ func (p *Manager) getInstances(device Device) (instances []Instance) {
 	}
 	return
 }
+
 func (p *Manager) SetAttribute(identity string, instanceID int, attr string, val interface{}) (err error) {
 
 	device, err := p.getDevice(identity)

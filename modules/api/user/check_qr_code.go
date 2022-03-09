@@ -1,6 +1,8 @@
 package user
 
 import (
+	"strconv"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/area"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
@@ -9,7 +11,6 @@ import (
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	jwt2 "github.com/zhiting-tech/smartassistant/modules/utils/jwt"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 
@@ -22,6 +23,8 @@ type checkQrCodeReq struct {
 	Nickname string `json:"nickname"`
 	roleIds  []int
 	areaId   uint64
+	areaType entity.AreaType
+	departmentIds []int
 }
 
 // CheckQrCodeResp 扫描邀请二维码接口返回数据
@@ -31,6 +34,7 @@ type CheckQrCodeResp struct {
 }
 
 func (req *checkQrCodeReq) validateRequest(c *gin.Context) (err error) {
+	var curArea entity.Area
 	if err = c.BindJSON(&req); err != nil {
 		return
 	}
@@ -49,7 +53,7 @@ func (req *checkQrCodeReq) validateRequest(c *gin.Context) (err error) {
 	// 判断是否是拥有者
 	u := session.Get(c)
 	if u != nil {
-		if entity.IsOwner(u.UserID) {
+		if entity.IsOwnerOfArea(u.UserID, claims.AreaID) {
 			err = errors.New(status.OwnerForbidJoinAreaAgain)
 			return
 		}
@@ -64,7 +68,7 @@ func (req *checkQrCodeReq) validateRequest(c *gin.Context) (err error) {
 
 	req.areaId = claims.AreaID
 	// 对应家庭未删除
-	_, err = entity.GetAreaByID(req.areaId)
+	curArea, err = entity.GetAreaByID(req.areaId)
 	if err != nil {
 		return
 	}
@@ -75,10 +79,32 @@ func (req *checkQrCodeReq) validateRequest(c *gin.Context) (err error) {
 		return
 	}
 
-	if len(roles) == 0 {
+	if len(roles) != len(req.roleIds) {
 		err = errors.New(status.RoleNotExist)
 		return
 	}
+	// 区域类型是否一致
+	req.areaType = claims.AreaType
+	if curArea.AreaType != req.areaType {
+		err = errors.New(status.AreaTypeNotEqual)
+		return
+	}
+
+	// 部门未被删除
+	// TODO 这里实现不好，尝试用hook去做判断，但要注意是否使用事务完成扫码逻辑
+	req.departmentIds = claims.DepartmentIds
+	if entity.IsCompany(curArea.AreaType) {
+		var departmentCount int64
+		departmentCount, err = entity.GetDepartmentCountByIds(req.departmentIds)
+		if err != nil {
+			return
+		}
+		if departmentCount != int64(len(req.departmentIds)){
+			err = errors.New(status.DepartmentNotExit)
+			return
+		}
+	}
+
 	return
 }
 
@@ -107,7 +133,15 @@ func CheckQrCode(c *gin.Context) {
 func (req *checkQrCodeReq) checkQrCode(c *gin.Context) (resp CheckQrCodeResp, err error) {
 	u := session.GetUserByToken(c)
 
-	var uRoles []entity.UserRole
+	var (
+		uRoles []entity.UserRole
+		uDepartments []entity.DepartmentUser
+		currentArea entity.Area
+	)
+
+	if currentArea, err = entity.GetAreaByID(req.areaId); err != nil {
+		return
+	}
 
 	var user entity.User
 	if u == nil {
@@ -120,6 +154,8 @@ func (req *checkQrCodeReq) checkQrCode(c *gin.Context) (resp CheckQrCodeResp, er
 			return
 		}
 		uRoles = wrapURoles(user.ID, req.roleIds)
+		uDepartments = entity.WrapDepUsersOfUId(user.ID, req.departmentIds)
+
 	} else {
 		user, err = entity.GetUserByID(u.UserID)
 		if err != nil {
@@ -127,16 +163,28 @@ func (req *checkQrCodeReq) checkQrCode(c *gin.Context) (resp CheckQrCodeResp, er
 		}
 
 		// 重复扫码，以最后扫码角色为主
-		// 删除用户原有角色
+		// 删除用户原有角色,部门关系
 		if err = entity.UnScopedDelURoleByUid(u.UserID); err != nil {
 			return
 		}
 
+		if len(req.departmentIds) > 0 && entity.IsCompany(currentArea.AreaType) {
+			if err = CheckDepartmentsManager(u.UserID, req.departmentIds, req.areaId); err != nil {
+				return
+			}
+			uDepartments = entity.WrapDepUsersOfUId(user.ID, req.departmentIds)
+		}
 		uRoles = wrapURoles(user.ID, req.roleIds)
 	}
 	// 给用户创建角色
 	if err = entity.CreateUserRole(uRoles); err != nil {
 		return
+	}
+
+	if len(uDepartments) > 0 && entity.IsCompany(currentArea.AreaType) {
+		if err = entity.CreateDepartmentUser(uDepartments); err != nil {
+			return
+		}
 	}
 
 	resp.UserInfo = entity.UserInfo{

@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	errors2 "errors"
-	"github.com/sirupsen/logrus"
-	"sync"
+	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc/status"
 	"time"
 
 	ws "github.com/gorilla/websocket"
@@ -22,6 +22,7 @@ type client struct {
 	conn   *ws.Conn
 	send   chan []byte
 	bucket *bucket
+	ginCtx *gin.Context
 }
 
 func (cli *client) Close() error {
@@ -41,18 +42,14 @@ type DeviceWrap struct {
 	IsPermit bool   `json:"is_permit"`
 }
 
-var _callServicePool sync.Pool
-
 // 解析 WebSocket 消息，并且调用业务逻辑
 func (cli *client) handleWsMessage(data []byte, user *session.User) (err error) {
-	cs := _callServicePool.Get().(*callService)
-	defer _callServicePool.Put(cs)
-	cs.reset()
-	if err = json.Unmarshal(data, cs); err != nil {
+	var cs callService
+	if err = json.Unmarshal(data, &cs); err != nil {
 		return
 	}
 
-	logger.Printf("domain:%s,service:%s,data:%s\n", cs.Domain, cs.Service, string(cs.ServiceData))
+	logger.Debugf("domain:%s,service:%s,data:%s\n", cs.Domain, cs.Service, string(cs.ServiceData))
 
 	// 请参考 docs/guide/web-socket-api.md 中的定义
 	// 如果消息类型持续增多，请拆分
@@ -60,21 +57,26 @@ func (cli *client) handleWsMessage(data []byte, user *session.User) (err error) 
 		return cli.discover(cs, user)
 	}
 
-	cs.CallUser = *user
-	return cli.handleCallService(*cs) // 通过插件服务和设备通信
+	cs.callUser = *user
+	return cli.handleCallService(cs) // 通过插件服务和设备通信
 }
 
-func (cli *client) discover(cs *callService, user *session.User) (err error) {
+func (cli *client) discover(cs callService, user *session.User) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	ch := plugin.GetGlobalClient().DevicesDiscover(ctx)
 	for result := range ch {
-		resp := callResponse{
-			ID:      cs.ID,
-			Success: true,
-		}
+		resp := NewResponse(cs.ID)
+		resp.Success = true
 		_, err = entity.GetPluginDevice(user.AreaID, result.PluginID, result.Identity)
 		if errors2.Is(err, gorm.ErrRecordNotFound) {
+			d := entity.Device{
+				Identity:     result.Identity,
+				Model:        result.Model,
+				Manufacturer: result.Manufacturer,
+				PluginID:     result.PluginID,
+			}
+			result.LogoURL = plugin.DeviceLogoURL(cli.ginCtx.Request, d)
 			resp.AddResult("device", result)
 			msg, _ := json.Marshal(resp)
 			cli.send <- msg
@@ -86,14 +88,12 @@ func (cli *client) discover(cs *callService, user *session.User) (err error) {
 
 func (cli *client) handleCallService(cs callService) (err error) {
 
-	resp := callResponse{
-		ID:   cs.ID,
-		Type: MsgTypeResponse,
-	}
+	resp := NewResponse(cs.ID)
 	defer func() {
 		if err != nil {
-			logrus.Errorf("handle device err %s", err.Error())
-			resp.Error = err.Error()
+			s := status.Convert(err)
+			resp.Error.Code = s.Code()
+			resp.Error.Message = s.Message()
 		} else {
 			resp.Success = true
 		}
@@ -129,7 +129,7 @@ func (cli *client) readWS(user *session.User) {
 				}
 			}()
 			if err := cli.handleWsMessage(data, user); err != nil {
-				logger.Warnf("handle websocket message error: %s", err.Error())
+				logger.Errorf("handle websocket message error: %s, request: %s", err.Error(), string(data))
 			}
 		}()
 	}
@@ -148,11 +148,5 @@ func (cli *client) writeWS() {
 			}
 			_ = cli.conn.WriteMessage(ws.TextMessage, msg)
 		}
-	}
-}
-
-func init() {
-	_callServicePool.New = func() interface{} {
-		return &callService{}
 	}
 }

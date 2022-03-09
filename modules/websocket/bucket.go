@@ -31,10 +31,10 @@ func (b *bucket) run() {
 	for {
 		select {
 		case client := <-b.register:
-			logger.Debug("register new websocket client", client.key)
+			//logger.Debug("register new websocket client", client.key)
 			b.put(client)
 		case client := <-b.unregister:
-			logger.Debug("del websocket client", client.key)
+			//logger.Debug("del websocket client", client.key)
 			b.remove(client.key)
 		case message := <-b.broadcast:
 			b.clients.Range(func(key, value interface{}) bool {
@@ -43,7 +43,7 @@ func (b *bucket) run() {
 					return true
 				}
 
-				logger.Debug("broadcast clientKey", cli.key, " AreaID ", cli.areaID)
+				//logger.Debug("broadcast clientKey", cli.key, " AreaID ", cli.areaID)
 				select {
 				case cli.send <- message.Data:
 				}

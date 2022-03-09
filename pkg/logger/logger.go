@@ -1,3 +1,7 @@
+// Package logger 提供日志记录功能
+// 每条日志均会输出 app、module 字段，分别代表应用，模块，默认值为 default，此两个字段会合并为 fluentd 的 tag
+// 设备插件 app 请使用 plugin_{插件名称} 的格式，方便后台查看
+// debug 模式下会输出 caller、package 字段作为跟踪
 package logger
 
 import (
@@ -63,26 +67,17 @@ func InitLogger(output io.Writer, level logrus.Level, f logrus.Fields, debug boo
 		}
 		newLogger.Hooks.Add(h)
 	}
-
+	if _, ok := f["app"]; !ok {
+		f["app"] = "default"
+	}
+	if _, ok := f["module"]; !ok {
+		f["module"] = "default"
+	}
 	fields = f
 	option = Option{level, output, format, debug}
 
 	// 初始化Entry
-	initEntry()
-}
-
-func initEntry() {
-	if option.Debug {
-		entry = &Entry{
-			Entry: newLogger.WithFields(fields),
-			Skip:  DirectEntrySkip,
-		}
-	} else {
-		entry = &Entry{
-			Entry: newLogger.WithFields(logrus.Fields{}),
-			Skip:  DirectEntrySkip,
-		}
-	}
+	entry = newEntry()
 }
 
 // 内部初始化
@@ -167,9 +162,9 @@ func Println(args ...interface{}) {
 
 func (entry *Entry) withCaller() *Entry {
 	caller := getCallerInfo(entry.Skip)
-	module := getModuleName(caller)
+	pkg := getPackageName(caller)
 
-	appendFields := logrus.Fields{"caller": caller, "module": module}
+	appendFields := logrus.Fields{"caller": caller, "package": pkg}
 	entry.WithFields(appendFields)
 
 	return entry
@@ -371,7 +366,7 @@ func getCallerInfo(skip int) string {
 	return fmt.Sprintf("%s:%d", file, line)
 }
 
-func getModuleName(caller string) string {
+func getPackageName(caller string) string {
 	index := strings.LastIndex(caller, "/")
 	tmp := caller[0:index]
 	index = strings.LastIndex(tmp, "/")

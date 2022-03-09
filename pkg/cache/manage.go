@@ -23,23 +23,29 @@ func newDefault() *Cache {
 }
 
 // 根据key获取value，如果获取不到，返回ErrValueNotFound错误。
-func Get(key interface{}) (interface{}, error) {
+func Get(key string) (interface{}, error) {
 	return cacheManager.Get(key)
 }
 
 // 根据key获取value和value在缓存的有限期。
-func GetWithTTL(key interface{}) (interface{}, time.Duration, error) {
+func GetWithTTL(key string) (interface{}, time.Duration, error) {
 	return cacheManager.GetWithTTL(key)
 }
 
-// 添加key对应的value到缓存中，有效期expiration为0，
-// 则使用创建缓存存储时的options的expiration属性，默认缓存存储go-cache的过期时间为5分钟。
-func Set(key interface{}, val interface{}, expiration time.Duration) error {
+// 添加key对应的value到缓存中。
+//有效期expiration为0，则使用创建缓存存储时的options的expiration属性，默认缓存存储go-cache的过期时间为5分钟。
+func Set(key string, val interface{}, expiration time.Duration) error {
 	return cacheManager.Set(key, val, expiration)
 }
 
+// 添加key对应的value到缓存中，如果缓存不存在key, 返回true, 否则返回false，
+//有效期expiration为0，则使用创建缓存存储时的options的expiration属性，默认缓存存储go-cache的过期时间为5分钟。
+func SetNX(key string, val interface{}, expiration time.Duration) bool {
+	return cacheManager.SetNX(key, val, expiration)
+}
+
 // 删除key对应的缓存。
-func Delete(key interface{}) error {
+func Delete(key string) error {
 	return cacheManager.Delete(key)
 }
 

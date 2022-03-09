@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/proto"
@@ -66,26 +67,22 @@ func runServer(ctx context.Context, p *server.Server) error {
 		return err
 	}
 
-	go func() {
-		select {
-		case <-ctx.Done():
-			ln.Close()
+	var localIP string
+	// localIP 先读环境变量
+	localIP = os.Getenv("LOCAL_IP")
+	if localIP == "" {
+		localIP, err = addr2.LocalIP()
+		if err != nil {
+			return err
 		}
-	}()
-
-	localIP, err := addr2.LocalIP()
-	if err != nil {
-		return err
 	}
+
 	addr := net.TCPAddr{
 		IP:   net.ParseIP(localIP),
 		Port: ln.Addr().(*net.TCPAddr).Port,
 	}
 	// 往etcd注册服务
-	if err := registry.RegisterService(ctx, p.Domain, addr.String()); err != nil {
-		return err
-	}
-	defer registry.UnregisterService(p.Domain)
+	go registry.RegisterService(ctx, p.Domain, addr.String())
 
 	// grpc服务
 	grpcServer := grpc.NewServer()
@@ -99,8 +96,20 @@ func runServer(ctx context.Context, p *server.Server) error {
 	h1s := http.Server{
 		Handler: h2c.NewHandler(mixHandler(mux, grpcServer), &http2.Server{}),
 	}
-	if err = h1s.Serve(ln); err != nil {
-		logrus.Error(err)
+
+	go func() {
+		if err = h1s.Serve(ln); err != nil {
+			logrus.Errorf("h1s serve err: %+v", err)
+		}
+	}()
+	logrus.Infoln("server started")
+	<-ctx.Done()
+	logrus.Infoln("server stopped")
+	shutdownContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	registry.UnregisterService(shutdownContext, p.Domain)
+	if err = h1s.Shutdown(shutdownContext); err != nil {
+		logrus.Errorf("h1s shutdown err: %+v", err)
 	}
-	return nil
+	return err
 }

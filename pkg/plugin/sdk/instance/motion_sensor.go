@@ -4,12 +4,18 @@ import "github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/attribute"
 
 // MotionSensor 人体传感器
 type MotionSensor struct {
+	IsChildInstance *IsChildInstance
+	Name            *attribute.Name
+	Model        	*attribute.Model
+	Manufacturer 	*attribute.Manufacturer
+	Version      	*attribute.Version
+
 	Detected *Detected
 	Battery *Battery
 }
 
 func (w MotionSensor) InstanceName() string {
-	return "motion_sensor"
+	return "human_sensors"
 }
 
 type Detected struct {

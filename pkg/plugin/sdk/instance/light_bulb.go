@@ -48,7 +48,7 @@ func NewSaturation() *Saturation {
 }
 
 type RGB struct {
-	attribute.Int
+	attribute.String
 }
 
 func NewRGB() *RGB {

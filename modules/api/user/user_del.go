@@ -1,7 +1,8 @@
 package user
 
 import (
-	"github.com/zhiting-tech/smartassistant/modules/api/utils/clouddisk"
+	"github.com/zhiting-tech/smartassistant/modules/extension"
+	pb "github.com/zhiting-tech/smartassistant/pkg/extension/proto"
 	"strconv"
 
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/cloud"
@@ -57,7 +58,9 @@ func DelUser(c *gin.Context) {
 		err = errors.Wrap(err, errors.InternalServerErr)
 	}
 	cloud.RemoveSAUser(sessionUser.AreaID, userID)
-	clouddisk.DelCloudDisk(c, userID)
+	extension.GetExtensionServer().Notify(pb.SAEvent_del_user_ev, map[string]interface{}{
+		"ids": []int{userID},
+	})
 	return
 
 }

@@ -1,23 +1,20 @@
 .PHONY: start build lint test format
 VERSION=latest
+DOCKER_REGISTRY=scregistry.zhitingtech.com/
+#DOCKER_REGISTRY="docker.yctc.tech/"
 
 start:
 	@go run cmd/smartassistant/main.go -c ./app.yaml
 
 # make build-all VERSION=1.0.0
-build-all: build build-supervisor
+build-all: build
 
 build:
 	docker build -f build/docker/Dockerfile --build-arg VERSION=$(VERSION) --build-arg GIT_COMMIT=$(shell git log -1 --format=%h) -t smartassistant:$(VERSION) .
 
-build-supervisor:
-	docker build -f build/docker/supervisor.Dockerfile --build-arg VERSION=$(VERSION) --build-arg GIT_COMMIT=$(shell git log -1 --format=%h) -t supervisor:$(VERSION) .
-
 push:
-	docker image tag smartassistant:$(VERSION) docker.yctc.tech/smartassistant:$(VERSION)
-	docker push docker.yctc.tech/smartassistant:$(VERSION)
-	docker image tag supervisor:$(VERSION) docker.yctc.tech/supervisor:$(VERSION)
-	docker push docker.yctc.tech/supervisor:$(VERSION)
+	docker image tag smartassistant:$(VERSION) $(DOCKER_REGISTRY)zhitingtech/smartassistant:$(VERSION)
+	docker push $(DOCKER_REGISTRY)zhitingtech/smartassistant:$(VERSION)
 
 run:
 	docker-compose -f build/docker/docker-compose.yaml up
@@ -41,5 +38,5 @@ install.goimports:
 	@go get -u golang.org/x/tools/cmd/goimports
 
 build-plugin-demo:
-	docker build -f build/docker/demo.Dockerfile -t demo-plugin  .
+	cd examples/plugin-demo; docker build -f Dockerfile -t demo-plugin  .
 

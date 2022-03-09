@@ -1,9 +1,9 @@
 package location
 
 import (
+	"github.com/zhiting-tech/smartassistant/modules/api/device"
 	"strconv"
 
-	"github.com/zhiting-tech/smartassistant/modules/api/device"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 
@@ -14,11 +14,11 @@ import (
 // infoResp 房间详情接口返回数据
 type infoResp struct {
 	Name    string       `json:"name"`
-	Devices []infoDevice `json:"devices"`
+	Devices []InfoDevice `json:"devices"`
 }
 
-// infoDevice 设备信息
-type infoDevice struct {
+// InfoDevice 设备信息
+type InfoDevice struct {
 	ID        int    `json:"id"`
 	LogoURL   string `json:"logo_url"`
 	Name      string `json:"name"`
@@ -32,13 +32,13 @@ func InfoLocation(c *gin.Context) {
 	var (
 		err         error
 		locationId  int
-		infoDevices []infoDevice
+		infoDevices []InfoDevice
 		resp        infoResp
 		location    entity.Location
 	)
 	defer func() {
 		if resp.Devices == nil {
-			resp.Devices = make([]infoDevice, 0)
+			resp.Devices = make([]InfoDevice, 0)
 		}
 		response.HandleResponse(c, err, resp)
 	}()
@@ -53,21 +53,22 @@ func InfoLocation(c *gin.Context) {
 		return
 	}
 
-	if infoDevices, err = GetLocationDevice(locationId, c); err != nil {
+	if infoDevices, err = GetDeviceByLocationID(locationId, c); err != nil {
 		err = errors.Wrap(err, errors.InternalServerErr)
 		return
 	}
 	resp.Devices = infoDevices
 	resp.Name = location.Name
 	return
-
 }
 
-func GetLocationDevice(locationId int, c *gin.Context) (infoDevices []infoDevice, err error) {
+func GetDeviceByLocationID(LocationId int, c *gin.Context) (infoDevices []InfoDevice, err error) {
 	var (
 		devices []entity.Device
 	)
-	devices, err = entity.GetDevicesByLocationID(locationId)
+
+	devices, err = entity.GetDevicesByLocationID(LocationId)
+
 	if err != nil {
 		return
 	}
@@ -76,7 +77,7 @@ func GetLocationDevice(locationId int, c *gin.Context) (infoDevices []infoDevice
 		return
 	}
 	for _, di := range deviceInfos {
-		infoDevices = append(infoDevices, infoDevice{
+		infoDevices = append(infoDevices, InfoDevice{
 			ID:        di.ID,
 			LogoURL:   di.LogoURL,
 			Name:      di.Name,

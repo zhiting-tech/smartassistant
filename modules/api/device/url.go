@@ -17,14 +17,15 @@ func RegisterDeviceRouter(r gin.IRouter) {
 	deviceGroup := r.Group("devices")
 	deviceGroup.POST("", AddDevice)
 
-	deviceAuthGroup := r.Group("devices", middleware.RequireAccount, middleware.WithScope("device"))
+	deviceAuthGroup := r.Group("devices", middleware.RequireAccountWithScope("device"))
 	deviceAuthGroup.GET("", ListAllDevice)
 	deviceAuthGroup.PUT(":id", requireBelongsToUser, UpdateDevice)
 	deviceAuthGroup.GET(":id", requireBelongsToUser, InfoDevice)
 	deviceAuthGroup.DELETE(":id", requireBelongsToUser, DelDevice)
 
 	// 设备型号列表（按分类分组）
-	r.GET("device/types", TypeList)
+	r.GET("device/types/major", MajorTypeList)
+	r.GET("device/types/minor", MinorTypeList)
 
 	// 检查SA是否已绑定
 	r.GET("/check", CheckSaDevice)

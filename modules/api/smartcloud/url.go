@@ -8,5 +8,5 @@ import (
 func InitSmartCloudRouter(r gin.IRouter) {
 	scGroup := r.Group("sc", middleware.ValidateSCReq)
 	// 用于sc请求找回用户凭证的接口
-	scGroup.GET("users/:id/token", GetToken)
+	scGroup.GET("users/:id/token/:type", GetToken)
 }

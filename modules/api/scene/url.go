@@ -51,5 +51,4 @@ func requireBelongsToUser(c *gin.Context) {
 	} else {
 		c.Next()
 	}
-
 }

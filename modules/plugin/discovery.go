@@ -93,8 +93,8 @@ func (m *discovery) registerService(key string, endpoint endpoints.Endpoint) err
 	service := strings.TrimPrefix(key, managerTarget+"/")
 	logger.Debugf("register service %s:%s from etcd", service, endpoint.Addr)
 
-	//// FIXME 插件暂时使用host模式，直接访问宿主机地址
-	//endpoint.Addr = config.GetConf().SmartAssistant.HostIP
+	// FIXME 插件暂时使用host模式，直接访问宿主机地址
+	// endpoint.Addr = config.GetConf().SmartAssistant.HostIP
 	if err := reverseproxy.RegisterUpstream(service, endpoint.Addr); err != nil {
 		return err
 	}

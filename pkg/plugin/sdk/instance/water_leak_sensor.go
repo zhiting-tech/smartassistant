@@ -4,6 +4,12 @@ import "github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/attribute"
 
 // WaterLeakSensor 水浸传感器
 type WaterLeakSensor struct {
+	IsChildInstance *IsChildInstance
+	Name            *attribute.Name
+	Model        	*attribute.Model
+	Manufacturer 	*attribute.Manufacturer
+	Version      	*attribute.Version
+
 	LeakDetected *LeakDetected
 	Battery *Battery
 }

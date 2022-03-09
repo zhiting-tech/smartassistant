@@ -5,6 +5,7 @@ import (
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth/generate"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth/models"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
+	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
 	"gopkg.in/oauth2.v3"
 	"gopkg.in/oauth2.v3/errors"
@@ -91,5 +92,18 @@ func clientAuthorizedHandler(clientID string, grant oauth2.GrantType) (allowed b
 // clientScopeHandler check the client allows to use scope
 func clientScopeHandler(clientID string, scope string) (allowed bool, err error) {
 	client, _ := entity.GetClientByClientID(clientID)
-	return strings.Contains(client.AllowScope, scope), nil
+
+	scopeList := strings.Split(scope, ",")
+	if len(scopeList) == 0 {
+		return false, nil
+	}
+	for _, scope := range scopeList {
+		if _, ok := types.Scopes[scope]; !ok {
+			return false, nil
+		}
+		if !strings.Contains(client.AllowScope, scope) {
+			return false, nil
+		}
+	}
+	return true, nil
 }

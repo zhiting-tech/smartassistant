@@ -18,6 +18,8 @@ type SmartAssistant struct {
 	HostRuntimePath string `json:"host_runtime_path" yaml:"host_runtime_path"`
 	RuntimePath     string `json:"runtime_path" yaml:"runtime_path"`
 
+	DockerRegistry string `json:"docker_registry" yaml:"docker_registry"`
+
 	// Deprecated: HostIP 插件取消host模式后删除
 	HostIP string `json:"host_ip" yaml:"host_ip"`
 }

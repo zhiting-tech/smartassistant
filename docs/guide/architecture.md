@@ -20,7 +20,7 @@
 
 ## 架构概述
 
-智汀家庭云运行在 Linux 主机下，通过 Docker 来对其中的服务进行部署与资源隔离。其中部分核心服务容器需要预先配置，
+智汀家庭云运行在 Linux 主机下（默认为 OpenWRT），通过 Docker 来对其中的服务进行部署与资源隔离。其中部分核心服务容器通过docker-compose.yaml配置，
 并且随系统启动自动运行；而插件（plugin）类服务则是由 SA 调用 docker API 的方式进行管理。
 
 插件启动后会运行一个 gRPC 服务以及一个可选的 HTTP 服务，SA 通过 docker API 监听插件运行状态，
@@ -40,10 +40,10 @@
 
 ## 程序设计的规则参考
 
-* 基础模块使用单例模式实例化，但应避免直接使用全局变量，可使用 entity.DB(), pkg.Log() 的形式做一层封装; 懒汉模式延迟初始化应使用 sync.Once
+* 基础模块使用单例模式实例化，但应避免直接使用全局变量，可使用 entity.DB() 的形式做一层封装; 懒汉模式延迟初始化应使用 sync.Once
 * 基础模块只依赖其他基础模块，不应涉及业务逻辑
 * 简单的业务模块（譬如只依赖基础模块），可直接使用单例模式，或者通过容器模块（app，command，server 等）进行实例化
-* 依赖其他业务模块，或者两个模块间可能会进行相互调用而导致循环引用的，使用控制反转（依赖注入）技术进行处理，由容器模块进行实例化（请参考 ioc exmaple）
+* 依赖其他业务模块，或者两个模块间可能会进行相互调用而导致循环引用的，使用控制反转（依赖注入）技术进行处理，由容器模块进行实例化
 * 应用内避免使用 eventbus 等 pubsub 模型进行模块解耦；如需使用 pubsub，请在 event 包中对事件类型、消息进行预定义；禁止为了方便而直接使用 Bus.Pub("my_event", data) 的形式
 * 尽量避免使用 init，应显式地在外层调用相关的 InitXXX() 函数
 
@@ -104,6 +104,29 @@
 ├── static
 ├── Makefile            make 配置
 └── README.md           项目介绍文档
+```
+
+## 运行时目录
+
+为了方便对智汀家庭云以及各扩展、插件数据进行管理，/build/install/install.sh 脚本进行初始化时会生成以下结构的运行时目录；如果您以其他方式运行智汀家庭云，
+也建议遵循以下目录结构：
+
+```text
+├── docker-compose.yaml 容器启动配置文件
+├── backup  备份目录
+├── config  配置目录
+│   ├── certs 证书目录
+│   ├── fluentd.conf
+│   ├── nginx_smartassistant.conf
+│   └── smartassistant.yaml
+├── data  数据目录
+│   ├── plugin  插件数据目录
+│   │   ├── HomeKit
+│   │   ├── LIFX
+│   │   └── PHILIPS hue
+│   └── smartassistant 智汀家庭云数据目录
+└── log 日志目录
+
 ```
 
 如果您想进一步了解项目开发相关的内容，请参考[如何参与项目](./contributing.md)。

@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
+	"github.com/zhiting-tech/smartassistant/modules/event"
 	"github.com/zhiting-tech/smartassistant/modules/plugin"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
 )
@@ -27,10 +28,12 @@ func DelPlugin(c *gin.Context) {
 		return
 	}
 
-	p, err := entity.GetPlugin(req.PluginID, session.Get(c).AreaID)
+	sessionUser := session.Get(c)
+	p, err := entity.GetPlugin(req.PluginID, sessionUser.AreaID)
 	if err != nil {
 		return
 	}
 	plg := plugin.NewFromEntity(p)
 	err = plg.Remove()
+	event.GetServer().Notify(event.NewEventMessage(event.DeviceDecrease, sessionUser.AreaID))
 }

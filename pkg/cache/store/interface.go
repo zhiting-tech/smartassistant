@@ -5,10 +5,11 @@ import (
 )
 
 type StoreInterface interface {
-	Get(key interface{}) (interface{}, error)
-	GetWithTTL(key interface{}) (interface{}, time.Duration, error)
-	Set(key interface{}, value interface{}, expir time.Duration) error
-	Delete(key interface{}) error
+	Get(key string) (interface{}, error)
+	GetWithTTL(key string) (interface{}, time.Duration, error)
+	Set(key string, value interface{}, expiration time.Duration) error
+	Delete(key string) error
 	Clear() error
 	GetType() string
+	SetNX(key string, value interface{}, expiration time.Duration) bool
 }

@@ -24,10 +24,14 @@ var (
 	DeviceDelete  = Permission{"删除设备", "delete", "device", ""}
 	DeviceManage  = Permission{"管理设备", "manage", "device", ""}
 	// 家庭/公司
-	AreaGetCode          = Permission{"生成邀请码", "get", "area", "invite_code"}
-	AreaUpdateName       = Permission{"修改名称", "update", "area", "name"}
-	AreaUpdateMemberRole = Permission{"修改成员角色", "update", "area", "member_role"}
-	AreaDelMember        = Permission{"删除成员", "delete", "area", "member"}
+	AreaGetCode          	 = Permission{"生成邀请码", "get", "area", "invite_code"}
+	AreaUpdateName         	 = Permission{"修改家庭名称", "update", "area", "name"}
+	AreaUpdateMemberRole     = Permission{"修改成员角色", "update", "area", "member_role"}
+	AreaDelMember        	 = Permission{"删除成员", "delete", "area", "member"}
+	// 公司
+	AreaUpdateMemberDepartment = Permission{"修改成员部门", "update", "area", "member_department"}
+	AreaUpdateCompanyName = Permission{"修改公司名称", "update", "area", "company_name"}
+
 	// 房间/区域
 	LocationAdd         = Permission{"添加房间/区域", "add", "location", ""}
 	LocationUpdateOrder = Permission{"调整顺序", "update", "location", "order"}
@@ -46,11 +50,20 @@ var (
 	SceneDel     = Permission{"删除场景", "delete", "scene", ""}
 	SceneControl = Permission{"控制场景", "control", "scene", ""}
 
-	DevicePermission   = []Permission{DeviceAdd, DeviceUpdate, DeviceControl, DeviceDelete, DeviceManage}
-	AreaPermission     = []Permission{AreaGetCode, AreaUpdateName, AreaUpdateMemberRole, AreaDelMember}
-	LocationPermission = []Permission{LocationAdd, LocationUpdateOrder, LocationUpdateName, LocationGet, LocationDel}
-	RolePermission     = []Permission{RoleGet, RoleAdd, RoleUpdate, RoleDel}
-	ScenePermission    = []Permission{SceneAdd, SceneUpdate, SceneDel, SceneControl}
+	// 部门
+	DepartmentAdd 		   = Permission{"添加部门", "add", "department", ""}
+	DepartmentUpdateOrder  = Permission{"调整部门顺序", "update", "department", "order"}
+	DepartmentGet  		   = Permission{"查看部门详情", "get", "department", ""}
+	DepartmentAddUser  	   = Permission{"添加成员", "add", "department", "user"}
+	DepartmentUpdate  	   = Permission{"部门设置", "update", "department", ""}
+
+	DevicePermission     = []Permission{DeviceAdd, DeviceUpdate, DeviceControl, DeviceDelete, DeviceManage}
+	AreaPermission       = []Permission{AreaGetCode, AreaUpdateName, AreaUpdateMemberRole, AreaDelMember}
+	LocationPermission   = []Permission{LocationAdd, LocationUpdateOrder, LocationUpdateName, LocationGet, LocationDel}
+	RolePermission       = []Permission{RoleGet, RoleAdd, RoleUpdate, RoleDel}
+	ScenePermission      = []Permission{SceneAdd, SceneUpdate, SceneDel, SceneControl}
+	DepartmentPermission = []Permission{DepartmentAdd, DepartmentUpdateOrder, DepartmentGet, DepartmentAddUser, DepartmentUpdate}
+	CompanyPermission    = []Permission{AreaGetCode, AreaUpdateCompanyName, AreaUpdateMemberRole, AreaUpdateMemberDepartment, AreaDelMember}
 
 	DefaultPermission []Permission
 
@@ -83,7 +96,9 @@ func init() {
 	DefaultPermission = append(DefaultPermission, LocationPermission...)
 	DefaultPermission = append(DefaultPermission, RolePermission...)
 	DefaultPermission = append(DefaultPermission, ScenePermission...)
+	DefaultPermission = append(DefaultPermission, DepartmentPermission...)
+	DefaultPermission = append(DefaultPermission, AreaUpdateMemberDepartment, AreaUpdateCompanyName)
 
 	ManagerPermission = append(ManagerPermission, DefaultPermission...)
-	MemberPermission = []Permission{DeviceControl, LocationGet}
+	MemberPermission = []Permission{DeviceControl, LocationGet, DepartmentGet}
 }

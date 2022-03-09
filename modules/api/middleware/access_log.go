@@ -2,12 +2,15 @@ package middleware
 
 import (
 	"bytes"
-	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
-	"github.com/zhiting-tech/smartassistant/pkg/logger"
 	"io/ioutil"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
 )
 
 type AccessLogWriter struct {
@@ -28,6 +31,10 @@ func AccessLog() gin.HandlerFunc {
 		bodyWriter := &AccessLogWriter{body: bytes.NewBufferString(""), ResponseWriter: c.Writer}
 		c.Writer = bodyWriter
 
+		spanContext := trace.SpanContextFromContext(c.Request.Context())
+		if spanContext.IsValid() {
+			c.Writer.Header().Add("Zt-Trace-Id", spanContext.TraceID().String())
+		}
 		var request string
 		if c.Request.Body != nil {
 			// 使用ReadAll从body中读取数据，会把Body清空
@@ -48,9 +55,9 @@ func AccessLog() gin.HandlerFunc {
 		// 不需要记录下面两种情况：
 		// 访问静态资源、
 		// 非json请求和响应（屏蔽上传或者下载）
-		if strings.HasPrefix(c.Request.RequestURI,"/api/static") ||
+		if strings.HasPrefix(c.Request.RequestURI, "/api/static") ||
 			c.Writer.Header().Get("Content-Type") != "application/json; charset=utf-8" ||
-			strings.Contains(c.Request.Header.Get("Content-Type"),"multipart/form-data") {
+			strings.Contains(c.Request.Header.Get("Content-Type"), "multipart/form-data") {
 
 			request = ""
 			response = ""
@@ -58,13 +65,16 @@ func AccessLog() gin.HandlerFunc {
 
 		fields := logrus.Fields{
 			"client_ip":   c.ClientIP(),
+			"module":      "api",
 			"request_uri": c.Request.RequestURI,
 			"request":     request,
 			"response":    response,
 		}
-
+		if spanContext.IsValid() {
+			fields["trace_id"] = spanContext.TraceID().String()
+		}
 		l := logger.NewEntry()
-		l.WithFields(fields).Infof(
+		l.WithFields(fields).Debugf(
 			"access log: method %s, status_code:% d, begin_time: %s, end_time: %s",
 			c.Request.Method,
 			bodyWriter.Status(),

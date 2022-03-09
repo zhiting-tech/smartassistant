@@ -17,8 +17,8 @@ type UpdateAreaReq struct {
 	Name string `json:"name"`
 }
 
-func (req *UpdateAreaReq) Validate() (err error) {
-	if err = checkAreaName(req.Name); err != nil {
+func (req *UpdateAreaReq) Validate(areaType entity.AreaType) (err error) {
+	if err = checkAreaName(req.Name, areaType); err != nil {
 		return
 	}
 	return
@@ -30,6 +30,7 @@ func UpdateArea(c *gin.Context) {
 		err    error
 		req    UpdateAreaReq
 		areaID uint64
+		area   entity.Area
 	)
 	defer func() {
 		response.HandleResponse(c, err, nil)
@@ -47,15 +48,18 @@ func UpdateArea(c *gin.Context) {
 		return
 	}
 
-	if err = req.Validate(); err != nil {
+	if area, err = entity.GetAreaByID(areaID); err != nil {
 		return
 	}
 
-	if _, err = entity.GetAreaByID(areaID); err != nil {
+	if err = req.Validate(area.AreaType); err != nil {
 		return
 	}
 
-	if err = entity.UpdateArea(areaID, req.Name); err != nil {
+	updates := map[string]interface{}{
+		"name": req.Name,
+	}
+	if err = entity.UpdateArea(areaID, updates); err != nil {
 		return
 	}
 	cloud.UpdateAreaName(areaID, req.Name)

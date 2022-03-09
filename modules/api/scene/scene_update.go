@@ -55,7 +55,7 @@ func UpdateScene(c *gin.Context) {
 	}
 
 	if e := task.GetManager().RestartSceneTask(sceneId); e != nil {
-		logger.Println("restart scene task err:", e)
+		logger.Error("restart scene task err:", e)
 	}
 
 }
@@ -78,12 +78,14 @@ func (req *UpdateSceneReq) validateRequest(sceneId int, c *gin.Context) (err err
 }
 
 func (req UpdateSceneReq) updateScene(sceneId int) (err error) {
-	// TODO 后续调整为使用事务
-	if err = entity.GetDB().Session(&gorm.Session{FullSaveAssociations: true}).Where("id=?", sceneId).Updates(&req.Scene).Error; err != nil {
-		err = errors.Wrap(err, errors.InternalServerErr)
+
+	if err = entity.GetDB().Session(&gorm.Session{FullSaveAssociations: true}).Transaction(func(tx *gorm.DB) error {
+		return entity.UpdateSceneByIDWithTx(sceneId, &req.Scene, tx)
+	}); err != nil {
 		return
 	}
 
+	// TODO 后续调整为使用事务
 	if err = req.delConditions(sceneId); err != nil {
 		return
 	}

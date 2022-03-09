@@ -36,14 +36,27 @@ func wrapRolePermissions(role entity.Role, c *gin.Context) (ps Permissions, err 
 	if err != nil {
 		return
 	}
+	curArea, _ := entity.GetAreaByID(session.Get(c).AreaID)
+
 	wrapPermissions(role, ps.Device)
 	for _, a := range ps.DeviceAdvanced.Locations {
 		for _, d := range a.Devices {
 			wrapPermissions(role, d.Permissions)
 		}
 	}
-	wrapPermissions(role, ps.Area)
-	wrapPermissions(role, ps.Location)
+	for _, a := range ps.DeviceAdvanced.Departments {
+		for _, d := range a.Devices {
+			wrapPermissions(role, d.Permissions)
+		}
+	}
+	if entity.IsHome(curArea.AreaType) {
+		wrapPermissions(role, ps.Area)
+		wrapPermissions(role, ps.Location)
+	}else {
+		wrapPermissions(role, ps.Company)
+		wrapPermissions(role, ps.Department)
+	}
+
 	wrapPermissions(role, ps.Role)
 	wrapPermissions(role, ps.Scene)
 	return
@@ -58,30 +71,51 @@ func wrapPermissions(role entity.Role, ps []Permission) {
 
 // getPermissionsWithDevices 获取所有可配置的权限(包括设备高级)
 func getPermissionsWithDevices(c *gin.Context) (Permissions, error) {
-
-	locations, err := getLocationsWithDevice(c)
+	curArea, err := entity.GetAreaByID(session.Get(c).AreaID)
 	if err != nil {
-		return Permissions{}, err
+		return  Permissions{}, err
 	}
-	return Permissions{
+	var locations, departments []Location
+	if entity.IsHome(curArea.AreaType) {
+		locations, err = getLocationsWithDevice(c)
+		if err != nil {
+			return Permissions{}, err
+		}
+	}else {
+		departments, err = getDepartmentsWithDevice(c)
+		if err != nil {
+			return Permissions{}, err
+		}
+	}
+	permission := Permissions{
 		Device:         wrapPs(types.DevicePermission),
-		DeviceAdvanced: DeviceAdvanced{Locations: locations},
-		Area:           wrapPs(types.AreaPermission),
-		Location:       wrapPs(types.LocationPermission),
+		DeviceAdvanced: DeviceAdvanced{Locations: locations, Departments: departments},
 		Role:           wrapPs(types.RolePermission),
 		Scene:          wrapPs(types.ScenePermission),
-	}, nil
+	}
+
+	if entity.IsHome(curArea.AreaType){
+		permission.Location = wrapPs(types.LocationPermission)
+		permission.Area  = wrapPs(types.AreaPermission)
+		return permission, nil
+	}
+	permission.Department = wrapPs(types.DepartmentPermission)
+	permission.Company  = wrapPs(types.CompanyPermission)
+
+	return permission, nil
 }
 
 // getPermissions 获取所有可配置的权限
 func getPermissions() (Permissions, error) {
 
 	return Permissions{
-		Device:   wrapPs(types.DevicePermission),
-		Area:     wrapPs(types.AreaPermission),
-		Location: wrapPs(types.LocationPermission),
-		Role:     wrapPs(types.RolePermission),
-		Scene:    wrapPs(types.ScenePermission),
+		Device:   	 wrapPs(types.DevicePermission),
+		Area:     	 wrapPs(types.AreaPermission),
+		Location: 	 wrapPs(types.LocationPermission),
+		Role:     	 wrapPs(types.RolePermission),
+		Scene:    	 wrapPs(types.ScenePermission),
+		Company:  	 wrapPs(types.CompanyPermission),
+		Department:  wrapPs(types.DepartmentPermission),
 	}, nil
 }
 
@@ -142,6 +176,53 @@ func getLocationsWithDevice(c *gin.Context) (locations []Location, err error) {
 			aa.Name = "其他"
 		}
 		locations = append(locations, aa)
+	}
+
+	return
+}
+
+// getDepartmentsWithDevice 获取每个部门下面设备的权限
+func getDepartmentsWithDevice(c *gin.Context) (department []Location, err error) {
+	sessionUser := session.Get(c)
+	devices, err := entity.GetDevices(sessionUser.AreaID)
+	if err != nil {
+		return
+	}
+	// 按部门划分
+	var departmentDevice Map
+	departmentDevice.m = make(map[int][]Device)
+	var wg sync.WaitGroup
+	wg.Add(len(devices))
+	for _, d := range devices {
+		go func(d entity.Device) {
+			defer wg.Done()
+			ps, e := device.Permissions(d)
+			if e != nil {
+				logger.Error("DevicePermissionsErr:", e.Error())
+				return
+			}
+			dd := Device{Name: d.Name, Permissions: wrapPs(ps)}
+			departmentDevice.Lock()
+			defer departmentDevice.Unlock()
+			value, ok := departmentDevice.m[d.DepartmentID]
+			if ok {
+				departmentDevice.m[d.DepartmentID] = append(value, dd)
+			} else {
+				departmentDevice.m[d.DepartmentID] = []Device{dd}
+			}
+		}(d)
+	}
+	wg.Wait()
+	for departmentID, ds := range departmentDevice.m {
+		a, _ := entity.GetDepartmentByID(departmentID)
+		aa := Location{
+			Name:    a.Name,
+			Devices: ds,
+		}
+		if aa.Name == "" {
+			aa.Name = "其他"
+		}
+		department = append(department, aa)
 	}
 
 	return

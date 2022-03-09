@@ -57,12 +57,10 @@ func bindCloud(c *gin.Context) {
 	// 更新用户和家庭关系
 	url := fmt.Sprintf("%s/sa/%s/users/%d", scUrl, saID, req.CloudUserID)
 	u := session.Get(c)
-	saDevice, _ := entity.GetSaDevice()
 	body := map[string]interface{}{
-		"access_token":   req.AccessToken,
-		"sa_user_id":     u.UserID,
-		"sa_lan_address": saDevice.Address,
-		"sa_area_id":     u.AreaID,
+		"access_token": req.AccessToken,
+		"sa_user_id":   u.UserID,
+		"sa_area_id":   u.AreaID,
 	}
 
 	area, err = entity.GetAreaByID(u.AreaID)
@@ -71,6 +69,7 @@ func bindCloud(c *gin.Context) {
 		return
 	}
 	body["area_name"] = area.Name
+	body["area_type"] = area.AreaType
 
 	setting := entity.GetDefaultUserCredentialFoundSetting()
 	if err = entity.GetSetting(entity.UserCredentialFoundType, &setting, u.AreaID); err != nil {
@@ -80,15 +79,18 @@ func bindCloud(c *gin.Context) {
 
 	// 判断是否允许找回找回凭证
 	if setting.UserCredentialFound {
-		body["area_token"] = setting2.GetUserCredentialAuthToken(u.AreaID)
+		body["area_token"] = setting2.GetAreaAuthToken(u.AreaID)
 	}
 
-	_, err = cloud.CloudRequest(url, http.MethodPost, body)
+	_, err = cloud.DoWithContext(c.Request.Context(), url, http.MethodPost, body)
 	if err != nil {
 		err = errors.New(status.SABindError)
 		return
 	}
 
+	err = SetAreaSynced(u.AreaID)
+	if err != nil {
+		return
+	}
 	resp.AreaID = strconv.FormatUint(u.AreaID, 10)
-
 }

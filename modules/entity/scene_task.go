@@ -2,8 +2,6 @@ package entity
 
 import (
 	"encoding/json"
-	"fmt"
-
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
@@ -35,7 +33,7 @@ type SceneTask struct {
 	Attributes datatypes.JSON `json:"attributes"` // refer to Attribute
 }
 
-func (d SceneTask) TableName() string {
+func (t SceneTask) TableName() string {
 	return "scene_tasks"
 }
 
@@ -52,16 +50,15 @@ func CreateSceneTask(sceneTask []SceneTask) (err error) {
 	return
 }
 
-// checkTaskDevice 校验设备任务类型
-func (task SceneTask) CheckTaskDevice(userId int) (err error) {
-	fmt.Println(task, 55)
-	if len(task.Attributes) == 0 || task.DeviceID == 0 {
+// CheckTaskDevice 校验设备任务类型
+func (t SceneTask) CheckTaskDevice(userId int) (err error) {
+	if len(t.Attributes) == 0 || t.DeviceID == 0 {
 		err = errors.Newf(status.SceneParamIncorrectErr, "scene_task_devices")
 		return
 	}
 
 	var ds []Attribute
-	if err = json.Unmarshal(task.Attributes, &ds); err != nil {
+	if err = json.Unmarshal(t.Attributes, &ds); err != nil {
 		logger.Error(err)
 		return
 	}
@@ -70,7 +67,7 @@ func (task SceneTask) CheckTaskDevice(userId int) (err error) {
 		return
 	}
 	for _, taskDevice := range ds {
-		if !up.IsDeviceAttrPermit(task.DeviceID, taskDevice) {
+		if !up.IsDeviceAttrPermit(t.DeviceID, taskDevice) {
 			err = errors.New(status.DeviceOrSceneControlDeny)
 			return
 		}
@@ -78,9 +75,9 @@ func (task SceneTask) CheckTaskDevice(userId int) (err error) {
 	return
 }
 
-// checkTaskType 执行任务类型校验
-func (task SceneTask) CheckTaskType() (err error) {
-	if task.Type < TaskTypeSmartDevice || task.Type > TaskTypeDisableAutoRun {
+// CheckTaskType 执行任务类型校验
+func (t SceneTask) CheckTaskType() (err error) {
+	if t.Type < TaskTypeSmartDevice || t.Type > TaskTypeDisableAutoRun {
 		err = errors.New(status.TaskTypeErr)
 	}
 	return

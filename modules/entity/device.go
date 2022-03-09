@@ -15,16 +15,19 @@ import (
 
 // Device 识别的设备
 type Device struct {
-	ID           int       `json:"id"`
-	Name         string    `json:"name"`
-	Address      string    `json:"address"`                                                // 地址
-	Identity     string    `json:"identity" gorm:"uniqueIndex:area_id_identity_plugin_id"` // 设备唯一值
-	Model        string    `json:"model"`                                                  // 型号
-	Manufacturer string    `json:"manufacturer"`                                           // 制造商
-	Type         string    `json:"type"`                                                   // 设备类型，如：light,switch...
+	ID   int    `json:"id"`
+	PID  int    `json:"pid"` // 子设备有值，所属父设备
+	Name string `json:"name"`
+
+	// Identity 设备在插件中的唯一标识符
+	Identity     string    `json:"identity" gorm:"uniqueIndex:area_id_identity_plugin_id"`
+	Model        string    `json:"model"`        // 型号
+	Manufacturer string    `json:"manufacturer"` // 制造商
+	Type         string    `json:"type"`         // 设备类型，如：light,switch...
 	PluginID     string    `json:"plugin_id" gorm:"uniqueIndex:area_id_identity_plugin_id"`
 	CreatedAt    time.Time `json:"created_at"`
 	LocationID   int       `json:"location_id"`
+	DepartmentID int       `json:"department_id"`
 	Deleted      gorm.DeletedAt
 
 	AreaID uint64 `json:"area_id" gorm:"type:bigint;uniqueIndex:area_id_identity_plugin_id"`
@@ -44,13 +47,28 @@ func (d *Device) AfterDelete(tx *gorm.DB) (err error) {
 	return tx.Delete(&RolePermission{}, "target = ?", target).Error
 }
 
+// IsInit 是否已经初始化信息
+func (d Device) IsInit() bool {
+	return len(d.ThingModel) != 0 && len(d.Shadow) != 0
+}
+
+// Clear 清除物模型信息
+func (d Device) Clear() error {
+
+	updates := map[string]interface{}{
+		"thing_model": nil,
+		"shadow":      nil,
+	}
+	return GetDB().Model(&d).Updates(updates).Error
+}
+
 func GetDeviceByID(id int) (device Device, err error) {
 	err = GetDB().First(&device, "id = ?", id).Error
 	return
 }
 
 func GetDevicesByPluginID(pluginID string) (devices []Device, err error) {
-	err = GetDB().Where(Device{PluginID: pluginID}).Find(&devices).Error
+	err = GetDB().Where(Device{PluginID: pluginID}).Where("p_id = 0").Find(&devices).Error
 	return
 }
 
@@ -62,10 +80,10 @@ func GetDeviceByIDWithUnscoped(id int) (device Device, err error) {
 
 // GetPluginDevice 获取插件的设备
 func GetPluginDevice(areaID uint64, pluginID, identity string) (device Device, err error) {
-	filter := Device{
-		Identity: identity,
-		PluginID: pluginID,
-	}
+	filter := make(map[string]interface{})
+	filter["identity"] = identity
+	filter["plugin_id"] = pluginID
+
 	err = GetDBWithAreaScope(areaID).Where(filter).First(&device).Error
 	return
 }
@@ -96,10 +114,20 @@ func GetDevicesByLocationID(locationId int) (devices []Device, err error) {
 	return
 }
 
+func GetDevicesByDepartmentID(departmentId int) (devices []Device, err error) {
+	err = GetDB().Order("created_at asc").Find(&devices, "department_id = ?", departmentId).Error
+	return
+}
+
 func DelDeviceByID(id int) (err error) {
 	d := Device{ID: id}
 	err = GetDB().Delete(&d).Error
 	return
+}
+
+// DelDeviceByPID 根据PID删除对应的子设备,子设备使用硬删除
+func DelDeviceByPID(pid int, tx *gorm.DB) error {
+	return tx.Where("p_id = ?", pid).Delete(&Device{}).Error
 }
 
 func DelDevicesByPlgID(plgID string) (err error) {
@@ -130,14 +158,27 @@ func UnBindLocationDevices(locationID int) (err error) {
 	return
 }
 
+// UnBindDepartmentDevices 解绑部门下的设备
+func UnBindDepartmentDevices(departmentID int, tx *gorm.DB) (err error) {
+	err = tx.Model(&Device{}).Where("department_id = ?", departmentID).Update("department_id", 0).Error
+	return
+}
+
+// UnBindDepartmentDevice 解绑该设备与部门的绑定
+func UnBindDepartmentDevice(deviceID int) (err error) {
+	device := &Device{ID: deviceID}
+	err = GetDB().First(device).Update("department_id", 0).Error
+	return
+}
+
 func UnBindLocationDevice(deviceID int) (err error) {
 	device := &Device{ID: deviceID}
 	err = GetDB().First(device).Update("location_id", 0).Error
 	return
 }
 
-// CheckDeviceExist 设备是否已存在
-func CheckDeviceExist(device Device, tx *gorm.DB) (err error) {
+// CheckSAExist SA是否已存在
+func CheckSAExist(device Device, tx *gorm.DB) (err error) {
 	if device.Model == types.SaModel {
 		// sa设备已被绑定，直接返回
 		if err = tx.First(&Device{}, "model = ? and area_id=?", types.SaModel, device.AreaID).Error; err == nil {
@@ -145,23 +186,11 @@ func CheckDeviceExist(device Device, tx *gorm.DB) (err error) {
 		}
 
 	}
-	filter := Device{
-		PluginID: device.PluginID,
-		Identity: device.Identity,
-	}
-
-	err = tx.Where(&filter).First(&device).Error
-	if errors2.Is(err, gorm.ErrRecordNotFound) {
-		return nil
-	}
-	if err != nil {
-		return errors.Wrap(err, errors.InternalServerErr)
-	}
-	return errors.New(status.DeviceExist)
+	return nil
 }
 
 func AddDevice(d *Device, tx *gorm.DB) (err error) {
-	if err = CheckDeviceExist(*d, tx); err != nil {
+	if err = CheckSAExist(*d, tx); err != nil {
 		return
 	}
 
@@ -186,6 +215,16 @@ func AddDevice(d *Device, tx *gorm.DB) (err error) {
 	}
 
 	return
+}
+
+// BatchAddChildDevice 批量添加子设备
+func BatchAddChildDevice(childDevices []*Device, tx *gorm.DB) error {
+	// 循环判断每一个设备，如果软删除，则重新添加
+	for _, childDevice := range childDevices {
+		_ = AddDevice(childDevice, tx)
+	}
+
+	return nil
 }
 
 // AddSADevice 添加SA设备
@@ -221,4 +260,9 @@ func GetDeviceByIdentity(identity string) (*Device, error) {
 	}
 
 	return &device, nil
+}
+
+// UpdateDeviceById 根据主键修改设备的值
+func UpdateDeviceById(id int, values interface{}, tx *gorm.DB) error {
+	return tx.Model(&Device{}).Where("id = ?", id).Updates(values).Error
 }

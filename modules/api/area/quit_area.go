@@ -1,7 +1,8 @@
 package area
 
 import (
-	"github.com/zhiting-tech/smartassistant/modules/api/utils/clouddisk"
+	"github.com/zhiting-tech/smartassistant/modules/extension"
+	pb "github.com/zhiting-tech/smartassistant/pkg/extension/proto"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -20,6 +21,7 @@ func QuitArea(c *gin.Context) {
 		sessionUser *session.User
 		userID      int
 		areaID      uint64
+		area 		entity.Area
 	)
 
 	defer func() {
@@ -32,16 +34,17 @@ func QuitArea(c *gin.Context) {
 		return
 	}
 
-	if entity.IsOwner(sessionUser.UserID) {
-		err = errors.Wrap(err, status.OwnerQuitErr)
-		return
-	}
-
 	if areaID, err = strconv.ParseUint(c.Param("id"), 10, 64); err != nil {
 		err = errors.Wrap(err, errors.BadRequest)
 		return
 	}
-	if _, err = entity.GetAreaByID(areaID); err != nil {
+	if area, err = entity.GetAreaByID(areaID); err != nil {
+		return
+	}
+
+	if entity.IsOwner(sessionUser.UserID) {
+		areaTypeStr := area.AreaType.String()
+		err = errors.Wrapf(err, status.OwnerQuitErr, areaTypeStr, areaTypeStr)
 		return
 	}
 
@@ -56,8 +59,9 @@ func QuitArea(c *gin.Context) {
 	}
 
 	// 退出家庭删除网盘所有文件夹
-	clouddisk.DelCloudDisk(c, userID)
-
+	extension.GetExtensionServer().Notify(pb.SAEvent_del_user_ev, map[string]interface{}{
+		"ids": []int{userID},
+	})
 	if err = entity.DelUser(sessionUser.UserID); err != nil {
 		err = errors.Wrap(err, errors.InternalServerErr)
 		return

@@ -3,16 +3,17 @@ package config
 
 import (
 	"fmt"
-	jsoniter "github.com/json-iterator/go"
-	"github.com/zhiting-tech/smartassistant/pkg/logger"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"strings"
+
+	jsoniter "github.com/json-iterator/go"
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
+	"gopkg.in/yaml.v2"
 )
 
 var (
-	options           Options
+	options           = defaultOptions()
 	alreadyInitConfig bool
 )
 

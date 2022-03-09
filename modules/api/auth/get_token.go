@@ -10,6 +10,7 @@ import (
 	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/modules/utils/hash"
+	"github.com/zhiting-tech/smartassistant/modules/utils/jwt"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
 	"gopkg.in/oauth2.v3"
@@ -70,6 +71,11 @@ func GetToken(c *gin.Context) {
 	ti, err := oauth.GetOauthServer().GetAccessToken(gt, tgr)
 	if err != nil {
 		logger.Errorf("get token failed: (%v)\n", err)
+		if err.Error() == jwt.ErrTokenIsExpired.Error() {
+			err = errors.Wrap(err, status.ErrRefreshTokenExpired)
+			return
+		}
+
 		err = errors.Wrap(err, errors.InternalServerErr)
 		return
 	}
@@ -83,7 +89,7 @@ func GetToken(c *gin.Context) {
 
 	if req.GrantType == string(oauth2.PasswordCredentials) || req.GrantType == string(oauth2.Refreshing) {
 		var u entity.User
-		u, err = getUserByToken(resp.TokenInfo.AccessToken)
+		u, err = GetUserByToken(resp.TokenInfo.AccessToken)
 		if err != nil {
 			return
 		}
@@ -174,6 +180,7 @@ func (req *GetTokenReq) HandleTokenRequest(c *gin.Context) (oauth2.GrantType, *o
 		return "", nil, err
 	}
 	tgr.Request.Header.Set(types.AreaID, strconv.FormatUint(areaID, 10))
+	tgr.Request.Header.Set(types.GrantType, string(gt))
 	return gt, tgr, nil
 }
 
@@ -200,10 +207,19 @@ func (req GetTokenReq) passwordAuthorizeHandler() (u entity.User, err error) {
 	return
 }
 
-func getUserByToken(accessToken string) (u entity.User, err error) {
+func GetUserByToken(accessToken string) (u entity.User, err error) {
 	ti, err := oauth.GetOauthServer().Manager.LoadAccessToken(accessToken)
 	if err != nil {
-		return
+		var uerr = errors.New(status.UserNotExist)
+		if err.Error() == uerr.Error() {
+			return u, uerr
+		}
+
+		if err.Error() == jwt.ErrTokenIsExpired.Error() {
+			return u, errors.New(status.ErrAccessTokenExpired)
+		}
+
+		return u, errors.Wrap(err, status.RequireLogin)
 	}
 
 	uid, _ := strconv.Atoi(ti.GetUserID())

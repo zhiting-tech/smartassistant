@@ -371,7 +371,7 @@ func WrapDeviceItem(item *Item, req *http.Request) (err error) {
 		return
 	}
 
-	item.LogoURL = plugin.LogoURL(req, device)
+	item.LogoURL = plugin.DeviceLogoURL(req, device)
 
 	if device.Deleted.Valid {
 		// 设备已删除

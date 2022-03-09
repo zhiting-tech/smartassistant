@@ -2,15 +2,17 @@ package archive
 
 import (
 	"archive/zip"
-	"github.com/sirupsen/logrus"
-	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/zhiting-tech/smartassistant/pkg/errors"
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
 )
 
 func UnZip(dst, src string) (err error) {
-	logrus.Printf("unzip file: %s -> %s", src, dst)
+	logger.Debugf("unzip file: %s -> %s", src, dst)
 
 	r, err := zip.OpenReader(src)
 	if err != nil {
@@ -24,7 +26,7 @@ func UnZip(dst, src string) (err error) {
 		extractedFiles = append(extractedFiles, dst)
 	}
 	for _, file := range r.File {
-		logrus.Println(file.Name)
+		logger.Debug(file.Name)
 		if err = extractZipFile(file, dst); err != nil {
 			return
 		}
@@ -58,12 +60,13 @@ func Zip(dst string, srcs ...string) (err error) {
 			}
 			defer data.Close()
 
-			w, err := zw.Create(path)
+			name := strings.TrimPrefix(path, filepath.Dir(src)+string(filepath.Separator))
+			w, err := zw.Create(name)
 			if err != nil {
 				return err
 			}
 			_, err = io.Copy(w, data)
-			logrus.Printf("unzip %s to %s", path, filepath.Join(src, path))
+			logger.Debugf("archive %s to %s", path, filepath.Join(src, path))
 			return err
 		}
 		if err = filepath.Walk(src, walker); err != nil {

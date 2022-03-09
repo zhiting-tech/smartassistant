@@ -9,6 +9,8 @@ const (
 	PluginTypeNotSupport
 	PluginIsEmpty
 	PluginContentIllegal
+	PluginPullFail
+	PluginUpFail
 )
 
 func init() {
@@ -17,4 +19,6 @@ func init() {
 	errors.NewCode(PluginTypeNotSupport, "插件包格式不正确")
 	errors.NewCode(PluginIsEmpty, "请上传插件")
 	errors.NewCode(PluginContentIllegal, "插件包内容不符合规范")
+	errors.NewCode(PluginPullFail, "下载插件失败")
+	errors.NewCode(PluginUpFail, "运行插件失败")
 }

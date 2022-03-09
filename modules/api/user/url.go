@@ -17,7 +17,7 @@ import (
 
 // RegisterUserRouter 注册与用户相关的路由及其处理函数
 func RegisterUserRouter(r gin.IRouter) {
-	usersGroup := r.Group("/users", middleware.RequireAccount, middleware.WithScope("user"))
+	usersGroup := r.Group("/users", middleware.RequireAccountWithScope("user"))
 	usersGroup.GET("", ListUser)
 
 	userGroup := usersGroup.Group(":id", requireSameArea)
@@ -27,6 +27,7 @@ func RegisterUserRouter(r gin.IRouter) {
 	userGroup.POST("/invitation/code", middleware.RequirePermission(types.AreaGetCode), GetInvitationCode)
 	userGroup.GET("/permissions", role.UserPermissions)
 	userGroup.PUT("/owner", TransferOwner)
+	userGroup.PUT("/departments", UserInfoDepartment)
 
 	invitationGroup := r.Group("/invitation")
 	{

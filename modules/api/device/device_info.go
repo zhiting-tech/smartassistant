@@ -2,6 +2,8 @@ package device
 
 import (
 	errors2 "errors"
+	"github.com/zhiting-tech/smartassistant/modules/device"
+	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/attribute"
 	"net/http"
 	"strconv"
 
@@ -23,12 +25,13 @@ type infoDeviceResp struct {
 
 // infoDevice 设备详情
 type infoDevice struct {
-	ID       int          `json:"id"`
-	Name     string       `json:"name"`
-	LogoURL  string       `json:"logo_url"`
-	Model    string       `json:"model"`
-	Location infoLocation `json:"location"`
-	Plugin   infoPlugin   `json:"plugin"`
+	ID         int           `json:"id"`
+	Name       string        `json:"name"`
+	LogoURL    string        `json:"logo_url"`
+	Model      string        `json:"model"`
+	Location   infoLocation `json:"location,omitempty"`
+	Department infoLocation `json:"department,omitempty"`
+	Plugin     infoPlugin    `json:"plugin"`
 
 	Attributes []entity.Attribute `json:"attributes"` // 有权限的action
 
@@ -41,7 +44,7 @@ type Permissions struct {
 	DeleteDevice bool `json:"delete_device"`
 }
 
-// infoLocation 设备所属房间详情
+// infoLocation 设备所属房间/部门详情
 type infoLocation struct {
 	Name string `json:"name"`
 	ID   int    `json:"id"`
@@ -57,10 +60,10 @@ type infoPlugin struct {
 // InfoDevice 用于处理设备详情接口的请求
 func InfoDevice(c *gin.Context) {
 	var (
-		err    error
-		id     int
-		device entity.Device
-		resp   infoDeviceResp
+		err    		error
+		id     		int
+		deviceInfo  entity.Device
+		resp   		infoDeviceResp
 	)
 	defer func() {
 		response.HandleResponse(c, err, resp)
@@ -71,7 +74,7 @@ func InfoDevice(c *gin.Context) {
 		err = errors.Wrap(err, errors.BadRequest)
 		return
 	}
-	if device, err = entity.GetDeviceByID(id); err != nil {
+	if deviceInfo, err = entity.GetDeviceByID(id); err != nil {
 		if errors2.Is(err, gorm.ErrRecordNotFound) {
 			err = errors.Wrap(err, errors.NotFound)
 		} else {
@@ -80,7 +83,7 @@ func InfoDevice(c *gin.Context) {
 		return
 	}
 
-	if resp.Device, err = BuildInfoDevice(device, session.Get(c), c.Request); err != nil {
+	if resp.Device, err = BuildInfoDevice(deviceInfo, session.Get(c), c.Request); err != nil {
 		err = errors.Wrap(err, errors.InternalServerErr)
 		return
 	}
@@ -92,6 +95,9 @@ func BuildInfoDevice(device entity.Device, user *session.User, req *http.Request
 	var (
 		iLocation infoLocation
 		location  entity.Location
+
+		iDepartment infoLocation
+		department  entity.Department
 	)
 	if device.LocationID > 0 {
 		if location, err = entity.GetLocationByID(device.LocationID); err != nil {
@@ -106,12 +112,26 @@ func BuildInfoDevice(device entity.Device, user *session.User, req *http.Request
 		}
 	}
 
+	if device.DepartmentID > 0 {
+		if department, err = entity.GetDepartmentByID(device.DepartmentID); err != nil {
+			if !errors2.Is(err, gorm.ErrRecordNotFound) {
+				return
+			} else {
+				err = nil
+			}
+		} else {
+			iDepartment.ID = device.DepartmentID
+			iDepartment.Name = department.Name
+		}
+	}
+
 	iDevice = infoDevice{
-		ID:       device.ID,
-		Name:     device.Name,
-		Model:    device.Model,
-		Location: iLocation,
-		LogoURL:  plugin.LogoURL(req, device),
+		ID:         device.ID,
+		Name:       device.Name,
+		Model:      device.Model,
+		Location:   iLocation,
+		Department: iDepartment,
+		LogoURL:    plugin.DeviceLogoURL(req, device),
 	}
 
 	userID := user.UserID
@@ -135,20 +155,27 @@ func BuildInfoDevice(device entity.Device, user *session.User, req *http.Request
 }
 
 // getDeviceAttributes 获取设备有权限的action
-func getDeviceAttributes(userID int, device entity.Device) (as []entity.Attribute, err error) {
+func getDeviceAttributes(userID int, d entity.Device) (as []entity.Attribute, err error) {
 
-	attributes, err := plugin.GetControlAttributes(device)
+	attributes, err := device.GetControlAttributes(d)
 	if err != nil {
 		return
 	}
+
 	up, err := entity.GetUserPermissions(userID)
 	if err != nil {
 		return
 	}
+
 	for _, attr := range attributes {
-		if !up.IsDeviceAttrPermit(device.ID, attr) {
+		if !up.IsDeviceAttrPermit(d.ID, attr) {
 			continue
 		}
+		if attr.Permission == attribute.AttrPermissionNone {
+			// 如果属性为不可控制不需要读，则忽略
+			continue
+		}
+
 		as = append(as, attr)
 	}
 	return

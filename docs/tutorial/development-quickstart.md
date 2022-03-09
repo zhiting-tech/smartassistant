@@ -54,3 +54,5 @@ curl http://localhost:37965/api/check
 ```json
 {"status":0,"reason":"成功","data":{"is_bind":false,"revision":""}}
 ```
+
+[Mac开发环境搭建详细版](../../docs/guide/mac-development-start.md)

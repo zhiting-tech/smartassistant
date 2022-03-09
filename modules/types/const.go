@@ -9,15 +9,14 @@ const (
 	RoleKey   = "role"
 	OwnerRole = "owner"
 
-	// 云端校验来自sa的请求时使用
+	// SAID 云端校验来自sa的请求时使用
 	SAID  = "SA-ID"
 	SAKey = "SA-Key"
 
-	// 生成oauth token时使用
+	// AreaID 生成oauth token时使用
 	AreaID  = "Area-ID"
 	UserKey = "User-Key"
-
-	DockerRegistry = "docker.yctc.tech"
+	GrantType = "Grant-Type"
 )
 
 const (

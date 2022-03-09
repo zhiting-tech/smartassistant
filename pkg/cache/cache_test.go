@@ -42,6 +42,46 @@ func TestCacheSet(t *testing.T) {
 	assert.Nil(t, err)
 }
 
+func TestCacheSetNX(t *testing.T) {
+	// Given
+	ctrl := gomock.NewController(t)
+
+	value := &struct {
+		Hello string
+	}{
+		Hello: "world",
+	}
+
+	store := mocksStore.NewMockStoreInterface(ctrl)
+	store.EXPECT().SetNX("my-key", value, 5*time.Second).Return(true)
+
+	cache := New(store)
+
+	// When
+	ok := cache.Set("my-key", value, 5*time.Second)
+	assert.Equal(t, true, ok)
+}
+
+func TestCacheSetNXExists(t *testing.T) {
+	// Given
+	ctrl := gomock.NewController(t)
+
+	value := &struct {
+		Hello string
+	}{
+		Hello: "world",
+	}
+
+	store := mocksStore.NewMockStoreInterface(ctrl)
+	store.EXPECT().SetNX("my-key", value, 5*time.Second).Return(false)
+
+	cache := New(store)
+
+	// When
+	ok := cache.SetNX("my-key", value, 5*time.Second)
+	assert.Equal(t, false, ok)
+}
+
 func TestCacheGet(t *testing.T) {
 	ctrl := gomock.NewController(t)
 

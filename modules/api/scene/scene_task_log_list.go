@@ -43,7 +43,8 @@ type SceneTaskLogInfo struct {
 type TaskLogItem struct {
 	Name         string                `json:"name"`
 	Type         entity.TaskType       `json:"type"`
-	LocationName string                `json:"location_name"`
+	LocationName string                `json:"location_name,omitempty"`
+	DepartmentName string				`json:"department_name,omitempty"`
 	Result       entity.TaskResultType `json:"result"`
 }
 
@@ -141,6 +142,7 @@ func WrapLogItems(taskLog entity.TaskLog) (taskItems []TaskLogItem) {
 				Type:         taskLog.Type,
 				Result:       taskLog.Result,
 				LocationName: taskLog.DeviceLocation,
+				DepartmentName: taskLog.DeviceDepartment,
 			})
 		}
 	}

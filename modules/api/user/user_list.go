@@ -70,7 +70,8 @@ func WrapUsers(userRoles []entity.UserRole, areaID uint64) (listUsers []entity.U
 			users[userRole.UserID] = userInfo
 		} else {
 			roleInfo := entity.RoleInfo{ID: userRole.Role.ID, Name: userRole.Role.Name}
-			v.RoleInfos = append(users[userRole.UserID].RoleInfos, roleInfo)
+			v.RoleInfos = append(v.RoleInfos, roleInfo)
+			users[userRole.UserID] = v
 		}
 	}
 

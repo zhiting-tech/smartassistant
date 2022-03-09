@@ -11,6 +11,7 @@ type RedisClientInterface interface {
 	Set(key string, values interface{}, expiration time.Duration) *redis.StatusCmd
 	Del(keys ...string) *redis.IntCmd
 	FlushAll() *redis.StatusCmd
+	SetNX(key string, value interface{}, expiration time.Duration) *redis.BoolCmd
 }
 
 const RedisType = "redis"
@@ -31,21 +32,21 @@ func NewRedis(client RedisClientInterface, options *Options) *RedisStore {
 	}
 }
 
-func (s *RedisStore) Get(key interface{}) (interface{}, error) {
-	object, err := s.client.Get(key.(string)).Result()
+func (s *RedisStore) Get(key string) (interface{}, error) {
+	object, err := s.client.Get(key).Result()
 	if err != nil {
 		err = ErrValueNotFound
 	}
 	return object, err
 }
 
-func (s *RedisStore) GetWithTTL(key interface{}) (interface{}, time.Duration, error) {
-	object, err := s.client.Get(key.(string)).Result()
+func (s *RedisStore) GetWithTTL(key string) (interface{}, time.Duration, error) {
+	object, err := s.client.Get(key).Result()
 	if err != nil {
 		return nil, 0, ErrValueNotFound
 	}
 
-	ttl, err := s.client.TTL(key.(string)).Result()
+	ttl, err := s.client.TTL(key).Result()
 	if err != nil {
 		return nil, 0, ErrValueNotFound
 	}
@@ -53,17 +54,27 @@ func (s *RedisStore) GetWithTTL(key interface{}) (interface{}, time.Duration, er
 	return object, ttl, err
 }
 
-func (s *RedisStore) Set(key interface{}, val interface{}, expiration time.Duration) error {
+func (s *RedisStore) Set(key string, val interface{}, expiration time.Duration) error {
 	if expiration == 0 {
 		expiration = s.options.Expiration
 	}
-
-	return s.client.Set(key.(string), val, expiration).Err()
+	return s.client.Set(key, val, expiration).Err()
 }
 
-func (s *RedisStore) Delete(key interface{}) error {
-	_, err := s.client.Del(key.(string)).Result()
+func (s *RedisStore) Delete(key string) error {
+	_, err := s.client.Del(key).Result()
 	return err
+}
+
+func (s *RedisStore) SetNX(key string, value interface{}, expiration time.Duration) bool {
+	if expiration == 0 {
+		expiration = s.options.Expiration
+	}
+	val, err := s.client.SetNX(key, value, expiration).Result()
+	if err != nil {
+		return false
+	}
+	return val
 }
 
 func (s *RedisStore) Clear() error {

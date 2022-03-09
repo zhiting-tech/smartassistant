@@ -22,6 +22,8 @@ type AccessClaims struct {
 	SAID    string `json:"sa_id,omitempty"`
 	Exp     int64  `json:"exp,omitempty"`
 	Scope   string `json:"scope,omitempty"`
+	AreaType orm2.AreaType `json:"area_type"`
+	DepartmentIds []int `json:"department_ids"`
 }
 
 func (c AccessClaims) Valid() error {

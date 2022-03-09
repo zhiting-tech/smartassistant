@@ -21,10 +21,10 @@ func LoadPluginFromZip(path string, areaID uint64) (plg Plugin, err error) {
 		return
 	}
 
-	logrus.Println(dstDir)
+	logrus.Debug(dstDir)
 	dstDir, _ = filepath.Abs(dstDir)
-	logrus.Println(dstDir)
-	pluginPath := PluginBasePath(dstDir)
+	logrus.Debug(dstDir)
+	pluginPath := pluginBasePath(dstDir)
 	plgConf, err := LoadPluginConfig(pluginPath)
 	if err != nil {
 		return
@@ -79,7 +79,7 @@ func LoadPluginFromZip(path string, areaID uint64) (plg Plugin, err error) {
 }
 
 // LoadPluginConfig 加载插件配置
-func LoadPluginConfig(path string) (plg PluginConfig, err error) {
+func LoadPluginConfig(path string) (plg Config, err error) {
 
 	configFile, err := os.Open(path + "/config.json")
 	if err != nil {
@@ -99,8 +99,8 @@ func LoadPluginConfig(path string) (plg PluginConfig, err error) {
 	return
 }
 
-// PluginBasePath 根据配置文件config.json确定插件包准确目录
-func PluginBasePath(path string) (plgPath string) {
+// pluginBasePath 根据配置文件config.json确定插件包准确目录
+func pluginBasePath(path string) (plgPath string) {
 	filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
 		if filepath.Base(path) == "config.json" {
 			plgPath = filepath.Dir(path)

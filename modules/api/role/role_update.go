@@ -33,11 +33,14 @@ type Permissions struct {
 	Location       []Permission   `json:"location"`        // 区域权限设置
 	Role           []Permission   `json:"role"`            // 角色权限设置
 	Scene          []Permission   `json:"scene"`           // 场景权限设置
+	Company        []Permission   `json:"company"`         // 公司权限设置
+	Department     []Permission   `json:"department"`      // 部门权限设置
 }
 
 // DeviceAdvanced 设备高级权限信息
 type DeviceAdvanced struct {
 	Locations []Location `json:"locations"`
+	Departments []Location `json:"departments"`
 }
 
 // Location 房间信息
@@ -109,11 +112,20 @@ func roleUpdate(c *gin.Context) {
 			updatePermission(r, vv.Permissions)
 		}
 	}
+
+	for _, v := range req.Permissions.DeviceAdvanced.Departments {
+		for _, vv := range v.Devices {
+			updatePermission(r, vv.Permissions)
+		}
+	}
+
 	updatePermission(r, req.Permissions.Device)
 	updatePermission(r, req.Permissions.Area)
 	updatePermission(r, req.Permissions.Location)
 	updatePermission(r, req.Permissions.Role)
 	updatePermission(r, req.Permissions.Scene)
+	updatePermission(r, req.Permissions.Company)
+	updatePermission(r, req.Permissions.Department)
 }
 
 func updatePermission(role entity.Role, ps []Permission) {
