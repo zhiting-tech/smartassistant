@@ -112,8 +112,8 @@ func (s *Server) readFromUDP(token []byte) {
 		if err != nil {
 			logger.Warn("[sa discover] decrypt error", err)
 		}
-		//logger.Infof("[sa discover] get result bytes %v from %v", result, remoteAddr)
-		//logger.Infof("[sa discover] get result %s from %v", string(result), remoteAddr)
+		// logger.Infof("[sa discover] get result bytes %v from %v", result, remoteAddr)
+		// logger.Infof("[sa discover] get result %s from %v", string(result), remoteAddr)
 
 		msg := make(map[string]interface{})
 		if err = json.Unmarshal(result, &msg); err != nil {
@@ -127,7 +127,7 @@ func (s *Server) readFromUDP(token []byte) {
 			re := Result{
 				ID: int(msg["id"].(float64)),
 				Re: Info{
-					Model: "smart_assistant",
+					Model: types.SaModel,
 					SwVer: types.Version,
 					HwVer: types.HardwareVersion,
 					SaID:  config.GetConf().SmartAssistant.ID,

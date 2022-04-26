@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/middleware"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
@@ -16,7 +17,7 @@ import (
 
 // RegisterAreaRouter 用于注册与家庭相关的路由及其处理函数
 func RegisterAreaRouter(r gin.IRouter) {
-	areasGroup := r.Group("areas", middleware.RequireAccountWithScope("area"))
+	areasGroup := r.Group("areas", middleware.RequireAccountWithScope(types.ScopeArea))
 	areasGroup.GET("", ListArea)
 
 	areaGroup := areasGroup.Group(":id", requireBelongsToUser)

@@ -111,6 +111,7 @@ func (req *CreateSceneReq) validate(c *gin.Context) (err error) {
 
 		// SceneCondition 触发条件检验
 		var count int
+		isRequireNotify := req.isRequireNotify()
 		for _, sc := range req.SceneConditions {
 			// 触发条件为满足全部时，定时触发条件只允许一个
 			if sc.ConditionType == entity.ConditionTypeTiming && req.IsMatchAllCondition() {
@@ -121,7 +122,7 @@ func (req *CreateSceneReq) validate(c *gin.Context) (err error) {
 				}
 
 			}
-			if err = sc.CheckCondition(session.Get(c).UserID); err != nil {
+			if err = sc.CheckCondition(session.Get(c).UserID, isRequireNotify); err != nil {
 				return
 			}
 		}
@@ -133,6 +134,28 @@ func (req *CreateSceneReq) validate(c *gin.Context) (err error) {
 		}
 	}
 	return
+}
+
+// isRequireNotify 是否需要通知权限
+func (req *CreateSceneReq) isRequireNotify() bool {
+	if !req.IsMatchAllCondition() {
+		return true
+	}
+
+	var hasConditionTypeTiming bool
+	var hasConditionTypeDeviceStatus bool
+	for _, sc := range req.SceneConditions {
+		if sc.ConditionType == entity.ConditionTypeTiming {
+			hasConditionTypeTiming = true
+		}
+		if sc.ConditionType == entity.ConditionTypeDeviceStatus {
+			hasConditionTypeDeviceStatus = true
+		}
+	}
+	if hasConditionTypeTiming && hasConditionTypeDeviceStatus {
+		return false
+	}
+	return true
 }
 
 // CheckSceneTasks 执行任务校验

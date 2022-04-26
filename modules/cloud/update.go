@@ -1,12 +1,14 @@
 package cloud
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 
 	"github.com/zhiting-tech/smartassistant/modules/config"
+	"github.com/zhiting-tech/smartassistant/pkg/http/httpclient"
 )
 
 const (
@@ -42,18 +44,18 @@ type SoftwareLastVersionSubServiceResult struct {
 	Image   string `json:"image"`
 }
 
-func GetLastSoftwareVersion() (result *SoftwareLastVersionHttpResult, err error) {
+func GetLastSoftwareVersionWithContext(ctx context.Context) (result *SoftwareLastVersionHttpResult, err error) {
 	var (
 		req  *http.Request
 		resp *http.Response
 		data []byte
 	)
 	url := fmt.Sprintf("%s/common/service/software/lastest", config.GetConf().SmartCloud.URL())
-	if req, err = http.NewRequest(http.MethodGet, url, nil); err != nil {
+	if req, err = http.NewRequestWithContext(ctx, http.MethodGet, url, nil); err != nil {
 		return
 	}
 
-	if resp, err = http.DefaultClient.Do(req); err != nil {
+	if resp, err = httpclient.DefaultClient.Do(req); err != nil {
 		return
 	}
 
@@ -105,14 +107,14 @@ type FirmwareLastVersionResult struct {
 	Algorithm string `json:"algorithm"`
 }
 
-func GetLastFirmwareVersion() (result *FirmwareLastVersionHttpResult, err error) {
+func GetLastFirmwareVersionWithContext(ctx context.Context) (result *FirmwareLastVersionHttpResult, err error) {
 	var (
 		req  *http.Request
 		resp *http.Response
 		data []byte
 	)
 	url := fmt.Sprintf("%s/common/service/firmware/lastest", config.GetConf().SmartCloud.URL())
-	if req, err = http.NewRequest(http.MethodGet, url, nil); err != nil {
+	if req, err = http.NewRequestWithContext(ctx, http.MethodGet, url, nil); err != nil {
 		return
 	}
 

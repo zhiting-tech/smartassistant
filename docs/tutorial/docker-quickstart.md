@@ -8,51 +8,15 @@
 
 ## 运行SA
 
-### 自行创建docker-compose文件运行
+### docker-compose文件运行
 
-创建一个目录作为SA运行的根目录，并在该目录中创建docker-compose.yaml文件，内容如下：
-
-```
-version: "3.9"
-
-services:
-  zt-nginx:
-    image: docker.yctc.tech/zt-nginx:3.0 
-    ports:
-      - 9010:9010
-      - 9020:9020
-      - 9030:9030
-    depends_on:
-      - smartassistant
-  etcd:
-    image: bitnami/etcd:3
-    environment:
-      - ALLOW_NONE_AUTHENTICATION=yes
-      - ETCD_GRPC_KEEPALIVE_TIMEOUT=10s
-      - ETCD_GRPC_KEEPALIVE_INTERVAL=10s
-    ports:
-      - 2379:2379
-      - 2380:2380
-  fluentd:
-    image: fluent/fluentd:v1.13
-    ports:
-      - "24224:24224"
-      - "24224:24224/udp"
-
-  smartassistant:
-    image: docker.yctc.tech/smartassistant:1.4.0
-    ports:
-      - "37965:37965"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      - etcd
-
-```
-
-输入以下命令启动服务：
+选择一个目录存放SA运行所需文件，执行以下命令：
 
 ```shell
+wget https://github.com/zhiting-tech/smartassistant/releases/download/v1.9.1/smartassistant.1.9.1.zip && unzip smartassistant.1.9.1.zip
+
+cd zt-smartassistant
+
 docker-compose up
 ```
 

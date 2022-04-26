@@ -23,9 +23,9 @@ VirtualBox 是一个免费的虚拟机软件，可通过官方网站[下载安�
 
 ## 使用 virtualbox 运行智汀家庭云
 
-智汀官方提供一个基于 OpenWRT 的智汀家庭云虚拟机镜像，可通过 [此地址(待上传)](https://www.zhitingtech.com/) 进行下载。
+智汀官方提供一个基于 OpenWRT 的智汀家庭云虚拟机镜像，可通过 [虚拟机下载地址](https://github.com/zhiting-tech/smartassistant/releases/download/v1.9.1/smartassistant.1.9.1.ova) 进行下载。
 
-运行 virtualbox 软件，点击“管理”菜单，选择“导入虚拟电脑”，点选上面下载的 smartassistant.ova 文件，点击“下一步”
+运行 virtualbox 软件，点击“管理”菜单，选择“导入虚拟电脑”，点选上面下载的 smartassistant.1.9.1.ova 文件，点击“下一步”
 
 ![导入虚拟电脑](../images/virtualbox-import-1.png)
 
@@ -51,7 +51,7 @@ VirtualBox 是一个免费的虚拟机软件，可通过官方网站[下载安�
 
 ![点击添加设备](../images/app_smartassistant_ready_add.png)
 
-如无意外，设备列表中会出现ID为 620100000001 的设备,点击“添加”按钮，然后按提示进行操作。
+如无意外，设备列表中会出现ID为 620123456789 的设备,点击“添加”按钮，然后按提示进行操作。
 
 ![点击添加设备](../images/app_smartassistant_add.png)
 

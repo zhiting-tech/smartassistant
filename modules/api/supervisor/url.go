@@ -15,6 +15,8 @@ func RegisterSupervisorRouter(r gin.IRouter) {
 		supervisorGroup.POST("backups", AddBackup)
 		supervisorGroup.DELETE("backups", DeleteBackup)
 		supervisorGroup.POST("backups/restore", Restore)
+		supervisorGroup.GET("backups/paths", ListBackupPath)
+		supervisorGroup.POST("backups/mount", MountDisk)
 	}
 	r.GET("supervisor/update", middleware.RequireAccount, middleware.RequirePermission(getSwUpgradePermission()), UpdateInfo)
 	r.GET("supervisor/update/latest", middleware.RequireAccount, middleware.RequirePermission(getSwUpgradePermission()), UpdateLastVersion)

@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"flag"
+	"github.com/zhiting-tech/smartassistant/modules/job"
+	"github.com/zhiting-tech/smartassistant/modules/utils/backup"
+	"github.com/zhiting-tech/smartassistant/pkg/filebrowser"
 	"math/rand"
 	"os"
 	"os/signal"
@@ -12,15 +15,14 @@ import (
 	"github.com/zhiting-tech/smartassistant/pkg/trace"
 
 	"github.com/sirupsen/logrus"
+
 	"github.com/zhiting-tech/smartassistant/modules/api"
 	"github.com/zhiting-tech/smartassistant/modules/api/setting"
 	"github.com/zhiting-tech/smartassistant/modules/cloud"
 	"github.com/zhiting-tech/smartassistant/modules/config"
-	"github.com/zhiting-tech/smartassistant/modules/device"
-	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/event"
 	"github.com/zhiting-tech/smartassistant/modules/extension"
-	"github.com/zhiting-tech/smartassistant/modules/job"
+	"github.com/zhiting-tech/smartassistant/modules/logreplay"
 	"github.com/zhiting-tech/smartassistant/modules/plugin"
 	"github.com/zhiting-tech/smartassistant/modules/sadiscover"
 	"github.com/zhiting-tech/smartassistant/modules/task"
@@ -45,9 +47,13 @@ func main() {
 	wsServer := websocket.NewWebSocketServer()
 	httpServer := api.NewHttpServer(wsServer.AcceptWebSocket)
 	saDiscoverServer := sadiscover.NewSaDiscoverServer()
-	jobServer := job.NewJobServer()
+	filebrowser.GetFBOrInit()
+
+	// 启动日志转发功能
+	logreplay.GetLogPlayer().EnableSave()
+	go logreplay.GetLogPlayer().Run(ctx)
 	// 启动定时任务和队列任务
-	go jobServer.Run(ctx)
+	go job.GetJobServer().Run(ctx)
 	// 启动数据埋点服务
 	go analytics.Start(conf)
 
@@ -59,6 +65,7 @@ func main() {
 	pluginClient := plugin.NewClient()
 	plugin.SetGlobalClient(pluginClient)
 
+	backup.CheckBackupInfo()
 	// 新建服务发现
 	discovery := plugin.NewDiscovery(pluginClient)
 	go discovery.Listen(ctx)
@@ -66,7 +73,7 @@ func main() {
 	go httpServer.Run(ctx)
 	go saDiscoverServer.Run(ctx)
 	go extension.GetExtensionServer().Run(ctx)
-	registerEventFunc(wsServer)
+	event.RegisterEventFunc(wsServer)
 
 	// 等待其他服务启动完成
 	time.Sleep(3 * time.Second)
@@ -83,10 +90,6 @@ func main() {
 	if len(conf.SmartCloud.Domain) > 0 && conf.SmartCloud.GRPCPort > 0 && len(conf.SmartAssistant.ID) > 0 {
 		// 启动数据通道
 		go cloud.StartDataTunnel(ctx)
-	}
-
-	if err := entity.InitClient(); err != nil {
-		logger.Panic("init client fail: ", err)
 	}
 
 	logger.Info("SmartAssistant started")
@@ -117,10 +120,4 @@ func initLog(debug bool) {
 	} else {
 		logger.InitLogger(os.Stderr, logrus.InfoLevel, fields, debug)
 	}
-}
-
-func registerEventFunc(ws *websocket.Server) {
-	event.GetServer().RegisterHandler(event.AttributeChange, ws.OnDeviceChange, task.DeviceStateChange, device.UpdateDeviceShadow)
-	event.GetServer().RegisterHandler(event.DeviceDecrease, ws.OnDeviceChange)
-	event.GetServer().RegisterHandler(event.DeviceIncrease, ws.OnDeviceChange)
 }

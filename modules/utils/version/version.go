@@ -25,3 +25,8 @@ func GreaterOrEqual(v1, v2 string) (bool, error) {
 	}
 	return sv1.GreaterThanOrEqual(sv2), nil
 }
+
+func IsValid(v string) bool {
+	_, err := version.NewSemver(v)
+	return err == nil
+}

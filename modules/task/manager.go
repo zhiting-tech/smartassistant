@@ -4,18 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	errors2 "errors"
-	"github.com/zhiting-tech/smartassistant/modules/event"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
 
-	"github.com/jinzhu/now"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/plugin"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
-	plugin2 "github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/server"
+	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2"
+	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2/definer"
+
+	"github.com/jinzhu/now"
 	"gorm.io/gorm"
 )
 
@@ -28,7 +30,7 @@ type Manager interface {
 	AddSceneTask(entity.Scene)
 	DeleteSceneTask(sceneID int)
 	RestartSceneTask(sceneID int) error
-	DeviceStateChange(d entity.Device, attr entity.Attribute) error
+	DeviceStateChange(d entity.Device, attr definer.AttributeEvent) error
 	Run(ctx context.Context)
 }
 
@@ -360,20 +362,24 @@ func (m *LocalManager) executeDevice(task entity.SceneTask) (err error) {
 			return errors.Wrap(err, http.StatusInternalServerError)
 		}
 		logger.Debugf("execute device command device id:%d instance id:%d attr:%s val:%v",
-			device.ID, d.InstanceID, d.Attribute.Attribute, d.Attribute.Val)
+			device.ID, device.IID, "d.Attribute.Attribute", d.Attribute.Val)
 
-		attributes := []plugin2.SetAttribute{
-			{
-				InstanceID: d.InstanceID,
-				Attribute:  d.Attribute.Attribute,
-				Val:        d.Attribute.Val,
-			},
-		}
-
-		data, _ := json.Marshal(plugin2.SetRequest{Attributes: attributes})
-		err = plugin.SetAttributes(device.AreaID, device.PluginID, device.Identity, data)
+		setReq := sdk.SetRequest{
+			Attributes: []sdk.SetAttribute{
+				{
+					IID: device.IID,
+					AID: d.Attribute.AID,
+					Val: d.Attribute.Val,
+				},
+			}}
+		err = plugin.SetAttributes(context.Background(), device.PluginID, device.AreaID, setReq)
 		if err != nil {
-			return errors.Wrap(err, status.DeviceOffline)
+			identify := plugin.Identify{
+				PluginID: device.PluginID,
+				IID:      device.IID,
+				AreaID:   device.AreaID,
+			}
+			return errors.Wrapf(err, status.DeviceOffline, identify.ID())
 		}
 	}
 	return
@@ -400,19 +406,13 @@ func (m *LocalManager) setSceneOff(sceneID int) (err error) {
 }
 
 // DeviceStateChange 设备状态变化触发场景
-func (m *LocalManager) DeviceStateChange(d entity.Device, attr entity.Attribute) error {
-	m.deviceAttrChange(d.ID, attr)
-	return nil
-}
+func (m *LocalManager) DeviceStateChange(d entity.Device, ac definer.AttributeEvent) (err error) {
 
-// deviceAttrChange 设备属性变更时触发场景
-func (m *LocalManager) deviceAttrChange(deviceID int, attr entity.Attribute) {
-
-	scenes, err := entity.GetScenesByCondition(deviceID, attr)
+	deviceID := d.ID
+	scenes, err := entity.GetScenesByCondition(deviceID, ac)
 	if err != nil {
-		logger.Errorf("can't find scenes with device %d %d %s change",
-			deviceID, attr.InstanceID, attr.Attribute.Attribute)
-		return
+		return fmt.Errorf("can't find scenes with device %d %s %d change",
+			deviceID, ac.IID, ac.AID)
 	}
 
 	// 遍历并包装场景为任务
@@ -420,8 +420,8 @@ func (m *LocalManager) deviceAttrChange(deviceID int, attr entity.Attribute) {
 		scene, _ = entity.GetSceneInfoById(scene.ID)
 		// 全部满足且有定时条件则不执行
 		if scene.IsMatchAllCondition() && scene.HaveTimeCondition() {
-			logger.Debugf("device %d state %s changed but scenes %d not match time conditoin,ignore\n",
-				deviceID, attr.Attribute.Attribute, scene.ID)
+			logger.Debugf("device %d state %d changed but scenes %d not match time conditoin,ignore\n",
+				deviceID, ac.AID, scene.ID)
 			continue
 		}
 
@@ -432,18 +432,5 @@ func (m *LocalManager) deviceAttrChange(deviceID int, attr entity.Attribute) {
 		t := NewTask(m.wrapSceneFunc(scene), 0)
 		m.pushTask(t, scene)
 	}
-}
-
-func DeviceStateChange(em event.EventMessage) error {
-	deviceID := em.GetDeviceID()
-	device, err := entity.GetDeviceByID(deviceID)
-	if err != nil {
-		return err
-	}
-	attr := em.GetAttr()
-	if attr == nil {
-		logger.Warn("device or attr is nil")
-		return nil
-	}
-	return GetManager().DeviceStateChange(device, *attr)
+	return
 }

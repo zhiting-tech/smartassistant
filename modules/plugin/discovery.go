@@ -2,14 +2,18 @@ package plugin
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"net/http"
 	"strings"
+
+	"go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/client/v3/naming/endpoints"
 
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
 	"github.com/zhiting-tech/smartassistant/pkg/reverseproxy"
-
-	"go.etcd.io/etcd/client/v3"
-	"go.etcd.io/etcd/client/v3/naming/endpoints"
 )
 
 const (
@@ -58,7 +62,9 @@ func (m *discovery) Listen(ctx context.Context) (err error) {
 		return
 	}
 
+	logger.Println("listening...")
 	for updates := range w {
+		logger.Println("update:", updates)
 		if err = m.handleUpdates(updates); err != nil {
 			logger.Error("handle update err:", err.Error())
 		}
@@ -93,23 +99,17 @@ func (m *discovery) registerService(key string, endpoint endpoints.Endpoint) err
 	service := strings.TrimPrefix(key, managerTarget+"/")
 	logger.Debugf("register service %s:%s from etcd", service, endpoint.Addr)
 
-	// FIXME 插件暂时使用host模式，直接访问宿主机地址
-	// endpoint.Addr = config.GetConf().SmartAssistant.HostIP
 	if err := reverseproxy.RegisterUpstream(service, endpoint.Addr); err != nil {
 		return err
 	}
 
-	plgConf, err := GetPluginConfig(endpoint.Addr, service)
-	if err != nil {
-		return err
-	}
 	// FIXME 仅支持单个家庭
 	area, err := getCurrentArea()
 	if err != nil {
 		logger.Errorf("getCurrentArea err: %s", err.Error())
 		return err
 	}
-	cli, err := newClient(area.ID, service, key, plgConf)
+	cli, err := newClient(area.ID, service, endpoint)
 	if err != nil {
 		logger.Errorf("new client err: %s", err.Error())
 		return err
@@ -135,6 +135,25 @@ func (m *discovery) unregisterService(key string) error {
 // getCurrentArea 获取当前家庭
 func getCurrentArea() (area entity.Area, err error) {
 	if err = entity.GetDB().First(&area).Error; err != nil {
+		return
+	}
+	return
+}
+
+// GetPluginConfig 获取插件配置
+func GetPluginConfig(addr, pluginID string) (config Plugin, err error) {
+	url := fmt.Sprintf("http://%s/api/plugin/%s/config.json", addr, pluginID)
+	resp, err := http.Get(url)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+	if err = json.Unmarshal(data, &config); err != nil {
 		return
 	}
 	return

@@ -2,10 +2,11 @@ package brand
 
 import (
 	"github.com/gin-gonic/gin"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
-	"github.com/zhiting-tech/smartassistant/modules/event"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
 	"github.com/zhiting-tech/smartassistant/pkg/analytics"
+	"github.com/zhiting-tech/smartassistant/pkg/event"
 )
 
 func DelPlugins(c *gin.Context) {
@@ -24,7 +25,7 @@ func DelPlugins(c *gin.Context) {
 	if err = c.BindJSON(&req); err != nil {
 		return
 	}
-	plgs, err := req.GetPlugins()
+	plgs, err := req.GetPluginsWithContext(c.Request.Context())
 	if err != nil {
 		return
 	}
@@ -34,12 +35,12 @@ func DelPlugins(c *gin.Context) {
 		if plg.Brand != req.BrandName {
 			continue
 		}
-		if err = plg.Remove(); err != nil {
+		if err = plg.Remove(c.Request.Context()); err != nil {
 			return
 		}
 		go analytics.RecordStruct(analytics.EventTypePluginDelete, user.UserID, plg)
 		resp.SuccessPlugins = append(resp.SuccessPlugins, plg.ID)
 	}
-	event.GetServer().Notify(event.NewEventMessage(event.DeviceDecrease, session.Get(c).AreaID))
+	event.Notify(event.NewEventMessage(event.DeviceDecrease, session.Get(c).AreaID))
 	return
 }

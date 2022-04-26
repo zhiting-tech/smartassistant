@@ -19,6 +19,8 @@ const (
 	DeviceOrSceneControlDeny
 	DeviceOffline
 	SceneParamIncorrectErr
+	ConditionOfDeviceAttrWithoutReadPermission
+	ConditionOfDeviceAttrWithoutNotifyPermission
 )
 
 func init() {
@@ -35,6 +37,8 @@ func init() {
 	errors.NewCode(DeviceActionErr, "设备操作类型不存在")
 	errors.NewCode(DeviceOperationNotSetErr, "设备操作未设置")
 	errors.NewCode(DeviceOrSceneControlDeny, "没有场景或设备的控制权限")
-	errors.NewCode(DeviceOffline, "设备断连")
+	errors.NewCode(DeviceOffline, "%s设备断连")
 	errors.NewCode(SceneParamIncorrectErr, "%s不正确")
+	errors.NewCode(ConditionOfDeviceAttrWithoutReadPermission, "场景触发条件的设备属性没有读权限")
+	errors.NewCode(ConditionOfDeviceAttrWithoutNotifyPermission, "场景触发条件的设备属性没有通知权限")
 }

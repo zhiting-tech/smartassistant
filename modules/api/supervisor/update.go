@@ -25,7 +25,7 @@ func Update(c *gin.Context) {
 		err = errors.Wrap(err, errors.BadRequest)
 		return
 	}
-	err = supervisor.GetManager().StartUpdateJob(req.Version)
+	err = supervisor.GetManager().StartUpdateJobWithContext(c.Request.Context(), req.Version)
 	if err != nil {
 		err = errors.Wrap(err, errors.InternalServerErr)
 	}

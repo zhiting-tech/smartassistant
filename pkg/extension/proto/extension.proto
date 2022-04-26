@@ -9,6 +9,8 @@ service Extension {
   rpc GetDepartmentUsers(GetDepartmentUsersReq) returns (GetDepartmentUsersResp);
   // 获取人员基础数据
   rpc GetBaseUserInfos(BaseUserInfosReq) returns(DepartmentUsers);
+  // 获取所有部门数据
+  rpc GetDepartments(GetAreaInfoReq) returns (DepartmentsResp);
   // Sa通知事件
   rpc SANotifyEvent(emptyReq) returns (stream SAEventInfo);
 }
@@ -61,6 +63,8 @@ message DepartmentBaseInfo {
   int32 department_id = 1;
   string name = 2;
   CompanyRole company_role = 3;
+  int32  sort = 4;
+  int32  user_count = 5;
 }
 
 message DepartmentInfo {
@@ -90,4 +94,8 @@ message SAEventInfo {
 message BaseUserInfosReq {
   string  token = 1;
   repeated int32 user_ids = 2;   // 为空将获取全公司人员
+}
+
+message DepartmentsResp{
+  repeated DepartmentBaseInfo departments = 1;
 }

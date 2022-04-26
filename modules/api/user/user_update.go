@@ -1,10 +1,12 @@
 package user
 
 import (
-	"github.com/zhiting-tech/smartassistant/modules/utils/hash"
-	"github.com/zhiting-tech/smartassistant/pkg/rand"
 	"strconv"
 	"time"
+
+	"github.com/zhiting-tech/smartassistant/modules/utils/hash"
+	"github.com/zhiting-tech/smartassistant/pkg/rand"
+	"github.com/zhiting-tech/smartassistant/pkg/wangpan"
 
 	"github.com/gin-gonic/gin"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
@@ -18,12 +20,13 @@ import (
 
 // updateUserReq 修改用户接口请求参数
 type updateUserReq struct {
-	Nickname    *string `json:"nickname"`
-	AccountName *string `json:"account_name"`
-	Password    *string `json:"password"`
-	OldPassword  *string `json:"old_password"`
-	RoleIds     []int   `json:"role_ids"`
-	DepartmentIds []int `json:"department_ids,omitempty"`
+	Nickname      *string `json:"nickname"`
+	AccountName   *string `json:"account_name"`
+	Password      *string `json:"password"`
+	OldPassword   *string `json:"old_password"`
+	AvatarID      *int    `json:"avatar_id"`
+	RoleIds       []int   `json:"role_ids"`
+	DepartmentIds []int   `json:"department_ids,omitempty"`
 }
 
 func (req *updateUserReq) Validate(updateUid, loginId int, areaType entity.AreaType) (updateUser entity.User, err error) {
@@ -43,7 +46,7 @@ func (req *updateUserReq) Validate(updateUid, loginId int, areaType entity.AreaT
 	}
 
 	// 自己才允许修改自己的用户名,密码和昵称
-	if req.Nickname != nil || req.AccountName != nil || req.Password != nil || req.OldPassword != nil{
+	if req.Nickname != nil || req.AccountName != nil || req.Password != nil || req.OldPassword != nil {
 		if loginId != updateUid {
 			err = errors.New(status.Deny)
 			return
@@ -65,19 +68,29 @@ func (req *updateUserReq) Validate(updateUid, loginId int, areaType entity.AreaT
 		}
 	}
 
+	if req.AvatarID != nil {
+		if _, err = entity.GetFileInfo(*req.AvatarID); err != nil {
+			return
+		}
+		updateUser.AvatarID = *req.AvatarID
+	}
+
 	if req.Password != nil {
 		if err = checkPassword(*req.Password); err != nil {
 			return
 		}
 		var userInfo entity.User
 		userInfo, err = entity.GetUserByID(loginId)
+		if err != nil {
+			return
+		}
 		// 通过密码是否设置过，判断是否是修改密码还是初始设置密码
 		if userInfo.Password == "" {
 			salt := rand.String(rand.KindAll)
 			updateUser.Salt = salt
 			hashNewPassword := hash.GenerateHashedPassword(*req.Password, salt)
 			updateUser.Password = hashNewPassword
-		}else {
+		} else {
 			if userInfo.Password != hash.GenerateHashedPassword(*req.OldPassword, userInfo.Salt) {
 				err = errors.New(status.OldPasswordErr)
 				return
@@ -90,6 +103,33 @@ func (req *updateUserReq) Validate(updateUid, loginId int, areaType entity.AreaT
 	return
 }
 
+func (req *updateUserReq) procMountFile(c *gin.Context) error {
+	if req.AccountName == nil && req.Password == nil {
+		return nil
+	}
+	userInfo, err := entity.GetUserByID(session.Get(c).UserID)
+	if err != nil {
+		err = errors.Wrap(err, errors.InternalServerErr)
+		return err
+	}
+	if req.AccountName == nil {
+		req.AccountName = new(string)
+	}
+	if req.Password == nil {
+		req.Password = new(string)
+	}
+	smb := wangpan.NewSmbMountStr(userInfo.AccountName, *req.AccountName, *req.Password)
+	if err = smb.SetMountPath(""); err != nil {
+		err = errors.Wrap(err, errors.InternalServerErr)
+		return err
+	}
+	if err = smb.Exec(); err != nil {
+		err = errors.Wrap(err, errors.InternalServerErr)
+		return err
+	}
+	return nil
+}
+
 // UpdateUser 用于处理修改用户接口的请求
 func UpdateUser(c *gin.Context) {
 	var (
@@ -98,7 +138,7 @@ func UpdateUser(c *gin.Context) {
 		updateUser  entity.User
 		sessionUser *session.User
 		userID      int
-		curArea  		entity.Area
+		curArea     entity.Area
 	)
 	defer func() {
 		response.HandleResponse(c, err, nil)
@@ -143,13 +183,17 @@ func UpdateUser(c *gin.Context) {
 		}
 	}
 
-	if entity.IsCompany(curArea.AreaType) && req.DepartmentIds != nil{
+	if entity.IsCompany(curArea.AreaType) && req.DepartmentIds != nil {
 		if err = CheckDepartmentsManager(userID, req.DepartmentIds, curArea.ID); err != nil {
 			return
 		}
 		if err = entity.CreateDepartmentUser(entity.WrapDepUsersOfUId(userID, req.DepartmentIds)); err != nil {
 			return
 		}
+	}
+
+	if err = req.procMountFile(c); err != nil {
+		return
 	}
 
 	if err = entity.EditUser(userID, updateUser); err != nil {
@@ -160,9 +204,9 @@ func UpdateUser(c *gin.Context) {
 }
 
 // getDelManagerDepartments 获取需要重置主管的部门
-func getDelManagerDepartments(oldDepartment []entity.Department, newDepartmentIDs []int) (departmentIDs []int){
+func getDelManagerDepartments(oldDepartment []entity.Department, newDepartmentIDs []int) (departmentIDs []int) {
 	if len(newDepartmentIDs) == 0 {
-		for _, department:= range oldDepartment {
+		for _, department := range oldDepartment {
 			departmentIDs = append(departmentIDs, department.ID)
 		}
 		return
@@ -185,7 +229,7 @@ func getDelManagerDepartments(oldDepartment []entity.Department, newDepartmentID
 
 // CheckDepartmentsManager 检查多个部门的主管是否被删除，并重置它
 // TODO 尝试在删除的hook中做删除主管的操作，但要注意，原先的删除/更新逻辑的影响
-func CheckDepartmentsManager(userID int, departmentIds []int, areaID uint64) (err error){
+func CheckDepartmentsManager(userID int, departmentIds []int, areaID uint64) (err error) {
 	var departments []entity.Department
 	if departments, err = entity.GetManagerDepartments(areaID, userID); err != nil {
 		return

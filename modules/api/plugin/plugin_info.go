@@ -58,7 +58,7 @@ func GetPluginInfo(c *gin.Context) {
 	} else {
 		// 系统插件从SC获取数据，失败则用本地数据
 		var p *plugin.Plugin
-		p, err = plugin.GetGlobalManager().GetPlugin(req.PluginID)
+		p, err = plugin.GetGlobalManager().GetPluginWithContext(c.Request.Context(), req.PluginID)
 		if err != nil {
 			plg, err = getPlugin(req.PluginID, session.Get(c).AreaID)
 			if err != nil {

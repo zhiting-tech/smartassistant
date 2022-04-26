@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"context"
 	"encoding/json"
 	"io/ioutil"
 	"os"
@@ -19,10 +20,10 @@ type manager struct {
 	docker *docker.Client
 }
 
-// GetPlugin 获取单个插件信息
-func (m *manager) GetPlugin(id string) (p *Plugin, err error) {
+// GetPluginWithContext 获取单个插件信息
+func (m *manager) GetPluginWithContext(ctx context.Context, id string) (p *Plugin, err error) {
 	// TODO 从云端获取，失败则本地获取
-	plg, err := cloud.GetPlugin(id)
+	plg, err := cloud.GetPluginWithContext(ctx, id)
 	if err != nil {
 		return
 	}
@@ -51,9 +52,9 @@ func NewManager() *manager {
 	return &manager{area.ID, docker.GetClient()}
 }
 
-// LoadPlugins 加载插件列表
-func (m *manager) LoadPlugins() (plugins map[string]*Plugin, err error) {
-	defaultPlugins, err := m.loadDefaultPlugins()
+// LoadPluginsWithContext 加载插件列表
+func (m *manager) LoadPluginsWithContext(ctx context.Context) (plugins map[string]*Plugin, err error) {
+	defaultPlugins, err := m.loadDefaultPluginsWithContext(ctx)
 	if err != nil {
 		return
 	}
@@ -64,10 +65,10 @@ func (m *manager) LoadPlugins() (plugins map[string]*Plugin, err error) {
 	return plugins, nil
 }
 
-// loadDefaultPlugins 加载插件列表
-func (m *manager) loadDefaultPlugins() (plugins []Plugin, err error) {
+// loadDefaultPluginsWithContext 加载插件列表
+func (m *manager) loadDefaultPluginsWithContext(ctx context.Context) (plugins []Plugin, err error) {
 
-	plgs, err := cloud.GetPlugins()
+	plgs, err := cloud.GetPluginsWithContext(ctx)
 	if err != nil {
 		return
 	}

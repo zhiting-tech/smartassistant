@@ -1,6 +1,7 @@
 package user
 
 import (
+	"github.com/zhiting-tech/smartassistant/modules/file"
 	"strconv"
 
 	"github.com/zhiting-tech/smartassistant/modules/api/area"
@@ -16,10 +17,10 @@ import (
 // userInfoResp 用户详情接口返回数据
 type userInfoResp struct {
 	entity.UserInfo
-	IsOwner bool      `json:"is_owner"`
-	IsSelf  bool      `json:"is_self"`
-	Area    area.Area `json:"area"`
-	DepartmentInfos []entity.DepartmentInfo `json:"department_infos,omitempty"`   // 所在部门
+	IsOwner         bool                    `json:"is_owner"`
+	IsSelf          bool                    `json:"is_self"`
+	Area            area.Area               `json:"area"`
+	DepartmentInfos []entity.DepartmentInfo `json:"department_infos,omitempty"` // 所在部门
 }
 
 // InfoUser 用于处理用户详情接口的请求
@@ -30,7 +31,7 @@ func InfoUser(c *gin.Context) {
 		user        entity.User
 		userID      int
 		sessionUser *session.User
-		curArea 		entity.Area
+		curArea     entity.Area
 	)
 
 	defer func() {
@@ -64,7 +65,7 @@ func InfoUser(c *gin.Context) {
 	resp.IsOwner = entity.IsOwner(userID)
 
 	resp.IsSelf = userID == sessionUser.UserID
-	resp.UserInfo, err = WrapUserInfo(user, resp.IsOwner)
+	resp.UserInfo, err = WrapUserInfo(c, user, resp.IsOwner)
 	resp.AccountName = user.AccountName
 	resp.Area, err = GetArea(curArea)
 
@@ -75,7 +76,7 @@ func InfoUser(c *gin.Context) {
 	return
 }
 
-func WrapUserInfo(user entity.User, isOwner bool) (infoUser entity.UserInfo, err error) {
+func WrapUserInfo(c *gin.Context, user entity.User, isOwner bool) (infoUser entity.UserInfo, err error) {
 	infoUser.UserId = user.ID
 	infoUser.Nickname = user.Nickname
 	infoUser.IsSetPassword = user.Password != ""
@@ -85,15 +86,16 @@ func WrapUserInfo(user entity.User, isOwner bool) (infoUser entity.UserInfo, err
 	} else {
 		infoUser.RoleInfos, err = entity.GetRoleInfos(user.ID)
 	}
+	infoUser.AvatarUrl, _ = file.GetFileUrl(c, user.AvatarID)
 	return
 }
 
 // GetArea 获取家庭信息
 func GetArea(info entity.Area) (areaInfo area.Area, err error) {
 	areaInfo = area.Area{
-		Name: info.Name,
-		ID:   strconv.FormatUint(info.ID, 10),
-		AreaType: info.AreaType,
+		Name:        info.Name,
+		ID:          strconv.FormatUint(info.ID, 10),
+		AreaType:    info.AreaType,
 		IsBindCloud: info.IsBindCloud,
 	}
 	return

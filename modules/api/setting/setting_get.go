@@ -2,9 +2,12 @@ package setting
 
 import (
 	"encoding/json"
+
 	"github.com/gin-gonic/gin"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
+	"github.com/zhiting-tech/smartassistant/modules/supervisor"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
@@ -14,6 +17,7 @@ type GetSettingResp struct {
 	UserCredentialFoundSetting    entity.UserCredentialFoundSetting    `json:"user_credential_found_setting"`
 	LogSetting                    entity.LogSwitchSetting              `json:"log_setting"`
 	GetCloudDiskCredentialSetting entity.GetCloudDiskCredentialSetting `json:"get_cloud_disk_credential_setting"`
+	RemoteHelp                    RemoteHelpSetting                    `json:"remote_help"`
 }
 
 // GetSetting 获取全局配置
@@ -44,9 +48,15 @@ func GetSetting(c *gin.Context) {
 		}
 		if err != nil {
 			logger.Errorf("json unmarshal err", err)
-			err = errors.New(errors.InternalServerErr)
+			err = errors.Wrap(err, errors.InternalServerErr)
 			return
 		}
+	}
+
+	if resp.RemoteHelp.Enable, err = supervisor.GetClient().RemoteHelpEnabledWithContext(c.Request.Context()); err != nil {
+		logger.Errorf("get remote help enabled error %v", err)
+		resp.RemoteHelp.Enable = false
+		err = nil
 	}
 
 }

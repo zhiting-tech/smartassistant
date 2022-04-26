@@ -2,17 +2,19 @@ package scene
 
 import (
 	errors2 "errors"
-	"github.com/zhiting-tech/smartassistant/modules/plugin"
 	"net/http"
 	"strconv"
+
+	device2 "github.com/zhiting-tech/smartassistant/modules/device"
 
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 
 	"github.com/gin-gonic/gin"
-	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"gorm.io/gorm"
+
+	"github.com/zhiting-tech/smartassistant/pkg/errors"
 )
 
 // InfoSceneResp 场景详情接口返回数据
@@ -208,7 +210,7 @@ func WrapDeviceInfo(deviceID int, req *http.Request, c *gin.Context) (deviceInfo
 	deviceInfo.Name = device.Name
 	deviceInfo.LocationName = location.Name
 	deviceInfo.DepartmentName = department.Name
-	deviceInfo.LogoURL = plugin.DeviceLogoURL(req, device)
+	deviceInfo.LogoURL = device2.LogoURL(req, device)
 
 	if device.Deleted.Valid {
 		// 设备已删除

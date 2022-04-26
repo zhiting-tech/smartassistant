@@ -97,7 +97,7 @@ func UpdateSystem(c *gin.Context) {
 		return
 	}
 
-	if result, err = cloud.GetLastFirmwareVersion(); err != nil {
+	if result, err = cloud.GetLastFirmwareVersionWithContext(c.Request.Context()); err != nil {
 		err = errors.Wrap(err, status.GetFirmwareVersionErr)
 		return
 	}
@@ -113,7 +113,7 @@ func UpdateSystem(c *gin.Context) {
 		return
 	}
 
-	if err = supervisor.GetClient().UpdateSystem(image); err != nil {
+	if err = supervisor.GetClient().UpdateSystemWithContext(c.Request.Context(), image); err != nil {
 		return
 	}
 

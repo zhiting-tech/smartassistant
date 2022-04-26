@@ -5,6 +5,7 @@ const (
 	InternalServerErr
 	BadRequest
 	NotFound
+	APIVersion
 )
 
 type Code struct {
@@ -17,6 +18,7 @@ var codeMap = map[int]string{
 	InternalServerErr: "服务器异常",
 	BadRequest:        "错误请求",
 	NotFound:          "找不到资源",
+	APIVersion:        "API版本不兼容",
 }
 
 func NewCode(status int, reason string) {

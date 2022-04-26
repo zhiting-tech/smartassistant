@@ -1,6 +1,8 @@
 package extension
 
 import (
+	"context"
+
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
@@ -8,14 +10,13 @@ import (
 )
 
 type extensionListResp struct {
-	ExtensionNames 	[]string  `json:"extension_names"`
+	ExtensionNames []string `json:"extension_names"`
 }
-
 
 // ListExtension 处理扩展列表接口的请求
 func ListExtension(c *gin.Context) {
 	var (
-		err error
+		err  error
 		resp extensionListResp
 	)
 
@@ -25,13 +26,12 @@ func ListExtension(c *gin.Context) {
 		}
 		response.HandleResponse(c, err, resp)
 	}()
-	resp = getExtensions()
+	resp = GetExtensionsWithContext(c.Request.Context())
 }
 
-
-// getExtensions 获取扩展列表
-func getExtensions() (exList extensionListResp) {
-	resp, err := supervisor.GetClient().GetExtensions()
+// GetExtensionsWithContext 获取扩展列表
+func GetExtensionsWithContext(ctx context.Context) (exList extensionListResp) {
+	resp, err := supervisor.GetClient().GetExtensionsWithContext(ctx)
 	if err != nil {
 		logrus.Warnf("getExtensions err is %s", err.Error())
 		return
@@ -42,9 +42,9 @@ func getExtensions() (exList extensionListResp) {
 	return
 }
 
-// HasExtension 是否有该扩展
-func HasExtension(extensionName string) bool {
-	resp, err := supervisor.GetClient().GetExtensions()
+// HasExtensionWithContext 是否有该扩展
+func HasExtensionWithContext(ctx context.Context, extensionName string) bool {
+	resp, err := supervisor.GetClient().GetExtensionsWithContext(ctx)
 	if err != nil {
 		logrus.Warnf("HasExtension err is %s", err.Error())
 		return false
@@ -56,5 +56,3 @@ func HasExtension(extensionName string) bool {
 	}
 	return false
 }
-
-

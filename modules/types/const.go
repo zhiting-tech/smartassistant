@@ -2,8 +2,7 @@ package types
 
 const (
 	SATokenKey      = "smart-assistant-token"
-	SaModel         = "smart_assistant"
-	ScopeTokenKey   = "scope-token"
+	SaModel         = "MH-SA00DCLB001W"
 	VerificationKey = "verification-code" // 临时密码
 
 	RoleKey   = "role"
@@ -13,9 +12,7 @@ const (
 	SAID  = "SA-ID"
 	SAKey = "SA-Key"
 
-	// AreaID 生成oauth token时使用
-	AreaID  = "Area-ID"
-	UserKey = "User-Key"
+	// GrantType 授权方式
 	GrantType = "Grant-Type"
 )
 

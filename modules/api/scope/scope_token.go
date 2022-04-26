@@ -1,16 +1,19 @@
 package scope
 
 import (
-	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth"
-	"github.com/zhiting-tech/smartassistant/modules/entity"
-	"github.com/zhiting-tech/smartassistant/pkg/logger"
-	"gopkg.in/oauth2.v3"
-	"gopkg.in/oauth2.v3/server"
 	"strconv"
 	"strings"
 	"time"
 
+	"gopkg.in/oauth2.v3"
+	"gopkg.in/oauth2.v3/server"
+
+	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth"
+	"github.com/zhiting-tech/smartassistant/modules/entity"
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
+
 	"github.com/gin-gonic/gin"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
@@ -62,7 +65,6 @@ func scopeToken(c *gin.Context) {
 		req  scopeTokenReq
 		resp scopeTokenResp
 		err  error
-		uKey string
 		uID  int
 	)
 
@@ -75,14 +77,12 @@ func scopeToken(c *gin.Context) {
 	}
 
 	sessionUser := session.Get(c)
-	uKey = sessionUser.Key
 	uID = sessionUser.UserID
 	if req.SAUserID != nil && *req.SAUserID != 0 {
 		u, err := entity.GetUserByID(*req.SAUserID)
 		if err != nil {
 			return
 		}
-		uKey = u.Key
 		uID = u.ID
 	}
 
@@ -91,14 +91,14 @@ func scopeToken(c *gin.Context) {
 		expireTime = cloudExpireIn
 	}
 
-	u := session.Get(c)
-	accessToken := c.GetHeader(types.SATokenKey)
-	ti, _ := oauth.GetOauthServer().Manager.LoadAccessToken(accessToken)
-	c.Request.Header.Set(types.AreaID, strconv.FormatUint(u.AreaID, 10))
-	c.Request.Header.Set(types.UserKey, uKey)
+
+	t, err := oauth.GetOauthServer().Manager.LoadAccessToken(c.GetHeader(types.SATokenKey))
+	if err != nil {
+		return
+	}
 	tgr := &server.AuthorizeRequest{
 		ResponseType:   oauth2.Token,
-		ClientID:       ti.GetClientID(),
+		ClientID:       t.GetClientID(),
 		UserID:         strconv.Itoa(uID),
 		Scope:          strings.Join(req.Scopes, ","),
 		AccessTokenExp: expireTime,

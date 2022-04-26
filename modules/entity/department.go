@@ -2,10 +2,12 @@ package entity
 
 import (
 	errors2 "errors"
+	"time"
+
+	"gorm.io/gorm"
+
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
-	"gorm.io/gorm"
-	"time"
 )
 
 type Department struct {
@@ -18,10 +20,10 @@ type Department struct {
 	AreaID uint64 `gorm:"type:bigint;uniqueIndex:dep_area_id_name"`
 	Area   Area   `gorm:"constraint:OnDelete:CASCADE;"`
 
-	ParentDepartmentID  *int
-	ChildDepartments []Department  `gorm:"foreignkey:parent_department_id"`
+	ParentDepartmentID *int
+	ChildDepartments   []Department `gorm:"foreignkey:parent_department_id"`
 
-	ManagerID  *int  `gorm:"index"`   // 主管
+	ManagerID *int `gorm:"index"` // 主管
 	Deleted   gorm.DeletedAt
 }
 
@@ -30,10 +32,10 @@ func (d Department) TableName() string {
 }
 
 type DepartmentInfo struct {
-	ID   int    `json:"id,omitempty" uri:"id"`
-	Name string `json:"name,omitempty"`
-	IsManager bool `json:"is_manager,omitempty"`
-	PId  *int 	`json:"pid,omitempty"`
+	ID        int    `json:"id,omitempty" uri:"id"`
+	Name      string `json:"name,omitempty"`
+	IsManager bool   `json:"is_manager,omitempty"`
+	PId       *int   `json:"pid,omitempty"`
 }
 
 func (d *Department) BeforeCreate(tx *gorm.DB) (err error) {
@@ -114,7 +116,7 @@ func GetDepartmentCountByIds(departmentIds []int) (count int64, err error) {
 }
 
 // GetAllDepartments 获取父部门下所有子部门
-func GetAllDepartments(parentDepartment []Department) (allDepartment []Department){
+func GetAllDepartments(parentDepartment []Department) (allDepartment []Department) {
 	allDepartment = append(allDepartment, parentDepartment...)
 	for _, d := range parentDepartment {
 		allDepartment = append(allDepartment, GetAllDepartments(d.ChildDepartments)...)
@@ -152,9 +154,9 @@ func UpdateDepartment(id int, updateDepartment Department) (err error) {
 	err = GetDB().First(department).Updates(updateDepartment).Error
 	if err != nil {
 		if errors2.Is(err, gorm.ErrRecordNotFound) {
-			err = errors.New(status.DepartmentNotExit)
+			err = errors.Wrap(err, status.DepartmentNotExit)
 		} else {
-			err = errors.New(errors.InternalServerErr)
+			err = errors.Wrap(err, errors.InternalServerErr)
 		}
 	}
 	return
@@ -175,13 +177,13 @@ func DelDepartment(id int) (err error) {
 }
 
 // GetManagerDepartments  获取主管的部门
-func GetManagerDepartments(areaID uint64, managerID int) (departments []Department, err error){
+func GetManagerDepartments(areaID uint64, managerID int) (departments []Department, err error) {
 	err = GetDB().Model(&Department{}).Where("manager_id = ? and area_id = ?", managerID, areaID).Find(&departments).Error
 	return
 }
 
 // ResetDepartmentManager 重置部门的主管
-func ResetDepartmentManager(areaID uint64, departmentID ...int) (err error){
+func ResetDepartmentManager(areaID uint64, departmentID ...int) (err error) {
 	if len(departmentID) == 0 {
 		return
 	}
@@ -189,6 +191,6 @@ func ResetDepartmentManager(areaID uint64, departmentID ...int) (err error){
 }
 
 // UnbindDepartmentManager 解除部门与主管关联
-func UnbindDepartmentManager(managerID int, areaID uint64, tx *gorm.DB) (err error){
-	return tx.Model(&Department{}).Where("manager_id = ? and area_id = ?", managerID, areaID).Update("manager_id", 0 ).Error
+func UnbindDepartmentManager(managerID int, areaID uint64, tx *gorm.DB) (err error) {
+	return tx.Model(&Department{}).Where("manager_id = ? and area_id = ?", managerID, areaID).Update("manager_id", 0).Error
 }

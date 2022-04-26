@@ -1,12 +1,15 @@
 package brand
 
 import (
+	"context"
+
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/cloud"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
 )
 
 // Brand 品牌信息
@@ -32,8 +35,8 @@ type brandInfoReq struct {
 	Name string `uri:"name"`
 }
 
-// GetBrandInfo 获取品牌详情
-func GetBrandInfo(name string) (brand Brand, err error) {
+// GetBrandInfoWithContext 获取品牌详情
+func GetBrandInfoWithContext(ctx context.Context, name string) (brand Brand, err error) {
 	brand.Plugins = make([]Plugin, 0)
 
 	brand = Brand{
@@ -53,10 +56,10 @@ func GetBrandInfo(name string) (brand Brand, err error) {
 	for _, p := range installedPlgs {
 		installedPlgMap[p.PluginID] = p
 	}
-	brandInfo, err := cloud.GetBrandInfo(name)
+	brandInfo, err := cloud.GetBrandInfoWithContext(ctx, name)
 	// 请求sc失败则读取本地信息
 	if err != nil {
-		logrus.Error(err)
+		logger.Error(err)
 
 		for _, p := range installedPlgs {
 			pp := Plugin{
@@ -115,7 +118,7 @@ func Info(c *gin.Context) {
 	}
 
 	var brand Brand
-	if brand, err = GetBrandInfo(req.Name); err != nil {
+	if brand, err = GetBrandInfoWithContext(c.Request.Context(), req.Name); err != nil {
 		err = errors.Wrap(err, errors.InternalServerErr)
 		return
 	} else {

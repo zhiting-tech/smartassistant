@@ -1,21 +1,27 @@
 package plugin
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"net/http"
+	url2 "net/url"
+	"strings"
 
+	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth"
 	"github.com/zhiting-tech/smartassistant/modules/config"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/modules/utils/url"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
+	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2"
+	"github.com/zhiting-tech/smartassistant/pkg/thingmodel"
 )
 
 // RemoveDevice 删除设备,断开相关连接和回收资源
-func RemoveDevice(deviceID int) (err error) {
+func RemoveDevice(ctx context.Context, deviceID int) (err error) {
 	d, err := entity.GetDeviceByID(deviceID)
 	if err != nil {
 		return errors.Wrap(err, errors.InternalServerErr)
@@ -24,123 +30,185 @@ func RemoveDevice(deviceID int) (err error) {
 	if d.Model == types.SaModel {
 		return errors.New(status.ForbiddenBindOtherSA)
 	}
-
-	if err = DisconnectDevice(d.Identity, d.PluginID, nil); err != nil {
-		logrus.Error("disconnect err:", err)
+	identify := Identify{
+		PluginID: d.PluginID,
+		IID:      d.IID,
+		AreaID:   d.AreaID,
+	}
+	if err = DisconnectDevice(ctx, identify, nil); err != nil {
+		logger.Error("disconnect err:", err)
 	}
 
 	if err = entity.DelDeviceByID(deviceID); err != nil {
-		return errors.Wrap(err, errors.InternalServerErr)
-	}
-	if err = entity.DelDeviceByPID(deviceID, entity.GetDB()); err != nil {
 		return errors.Wrap(err, errors.InternalServerErr)
 	}
 	return
 }
 
 // SetAttributes 通过插件设置设备的属性
-func SetAttributes(areaID uint64, pluginID, identity string, data json.RawMessage) (err error) {
-	d, err := entity.GetPluginDevice(areaID, pluginID, identity)
-	if err != nil {
-		return
-	}
-
-	_, err = GetGlobalClient().SetAttributes(d, data)
+func SetAttributes(ctx context.Context, pluginID string, areaID uint64, setReq sdk.SetRequest) (err error) {
+	_, err = GetGlobalClient().SetAttributes(ctx, pluginID, areaID, setReq)
 	return
 }
 
 // OTA 更新插件的设备的固件
-func OTA(areaID uint64, pluginID, identity, firmwareURL string) (err error) {
-	d, err := entity.GetPluginDevice(areaID, pluginID, identity)
+func OTA(ctx context.Context, areaID uint64, pluginID, iid, firmwareURL string) (err error) {
+	d, err := entity.GetPluginDevice(areaID, pluginID, iid)
 	if err != nil {
 		return
 	}
-
-	return GetGlobalClient().OTA(d, firmwareURL)
+	identify := Identify{
+		PluginID: d.PluginID,
+		IID:      d.IID,
+		AreaID:   d.AreaID,
+	}
+	return GetGlobalClient().OTA(ctx, identify, firmwareURL)
 }
 
-// GetInstanceControlAttributes 获取实例的控制属性
-func GetInstanceControlAttributes(instance Instance) (attributes []entity.Attribute) {
-	for _, attr := range instance.Attributes {
-
-		// 仅返回能控制的属性
-		// TODO 这里不能只判断名称
-		if attr.Attribute.Attribute == "name" {
-			continue
-		}
-
-		a := entity.Attribute{
-			Attribute:  attr.Attribute,
-			InstanceID: instance.InstanceId,
-		}
-		attributes = append(attributes, a)
+func ThingModelToEntity(iid string, tm thingmodel.ThingModel, pluginID string, areaID uint64) (d entity.Device, err error) {
+	info, err := tm.GetInfo(iid)
+	tmJson, err := json.Marshal(tm)
+	if err != nil {
+		return
 	}
+	conf := GetGlobalClient().DeviceConfig(pluginID, info.Model)
+	name := conf.Name
+	if conf.Name == "" {
+		name = info.Model
+	}
+	d = entity.Device{
+		Name:         name,
+		Model:        info.Model,
+		Manufacturer: info.Manufacturer,
+		IID:          info.IID,
+		PluginID:     pluginID,
+		AreaID:       areaID,
+		ThingModel:   tmJson,
+	}
+	shadow := entity.NewShadow()
+	for _, instance := range tm.Instances {
+		for _, srv := range instance.Services {
+			for _, attr := range srv.Attributes {
+				shadow.UpdateReported(instance.IID, attr.AID, attr.Val)
+			}
+		}
+	}
+	d.Shadow, err = json.Marshal(shadow)
+	if err != nil {
+		return
+	}
+	d.Type = conf.Type.String()
+	return
+}
+func InstanceToEntity(instance thingmodel.Instance, pluginID string, areaID uint64) (d entity.Device, err error) {
+	info, err := instance.GetInfo()
+	if err != nil {
+		return
+	}
+	tm := thingmodel.ThingModel{
+		Instances:  []thingmodel.Instance{instance},
+		OTASupport: false,
+	}
+	tmJson, err := json.Marshal(tm)
+	if err != nil {
+		return
+	}
+	conf := GetGlobalClient().DeviceConfig(pluginID, info.Model)
+	name := conf.Name
+	if conf.Name == "" {
+		name = info.Model
+	}
+	d = entity.Device{
+		Name:         name,
+		Model:        info.Model,
+		Manufacturer: info.Manufacturer,
+		IID:          info.IID,
+		PluginID:     pluginID,
+		AreaID:       areaID,
+		ThingModel:   tmJson,
+	}
+	shadow := entity.NewShadow()
+	for _, srv := range instance.Services {
+		for _, attr := range srv.Attributes {
+			shadow.UpdateReported(instance.IID, attr.AID, attr.Val)
+		}
+	}
+	d.Shadow, err = json.Marshal(shadow)
+	if err != nil {
+		return
+	}
+	d.Type = conf.Type.String()
 	return
 }
 
-func ConnectDevice(identity, pluginID string, authParams map[string]string) (das DeviceInstances, err error) {
-	return GetGlobalClient().Connect(identity, pluginID, authParams)
+func ConnectDevice(ctx context.Context, identify Identify, authParams map[string]interface{}) (das thingmodel.ThingModel, err error) {
+	return GetGlobalClient().Connect(ctx, identify, authParams)
 }
 
-func DisconnectDevice(identity, pluginID string, authParams map[string]string) error {
-	return GetGlobalClient().Disconnect(identity, pluginID, authParams)
+func DisconnectDevice(ctx context.Context, identify Identify, authParams map[string]interface{}) error {
+	return GetGlobalClient().Disconnect(ctx, identify, authParams)
 }
 
 func ConcatPluginPath(pluginID string, paths ...string) string {
-	paths = append([]string{"api", "plugin", pluginID}, paths...)
+	paths = append([]string{"plugin", pluginID}, paths...)
 	return url.ConcatPath(paths...)
 }
 
 // DeviceLogoURL 设备Logo图片地址
-func DeviceLogoURL(req *http.Request, d entity.Device) string {
-	return LogoURL(req, d.PluginID, d.Model, GetGlobalClient().DeviceConfig(d).Logo)
+func DeviceLogoURL(req *http.Request, pluginID, model string) string {
+	logo := GetGlobalClient().DeviceConfig(pluginID, model).Logo
+	return PluginTargetURL(req, pluginID, model, logo)
 }
 
-// LogoURL Logo图片地址
-func LogoURL(req *http.Request, pluginID, model, logo string) string {
+func PluginTargetURL(req *http.Request, pluginID, model, target string) string {
 	if model == types.SaModel {
 		return url.SAImageUrl(req)
 	}
-	path := ConcatPluginPath(pluginID, logo)
-	return url.BuildURL(path, nil, req)
+	path := ConcatPluginPath(pluginID, target)
+	return url.BuildURL(path, nil, req).String()
 }
 
-// PluginURL 返回设备的插件控制页url
-func PluginURL(d entity.Device, req *http.Request, token string) string {
+type URL struct {
+	url *url2.URL
+}
+
+// String 插件URL
+func (u URL) String() string {
+	return u.url.String()
+}
+
+// PluginPath 插件相对路径
+func (u URL) PluginPath() string {
+	uri := u.url.RequestURI()
+	strs := strings.SplitN(uri, "/", 3)
+	if len(strs) >= 3 {
+		return strs[2]
+	}
+	return ""
+}
+
+// ControlURL 返回设备的插件控制页url
+func ControlURL(d entity.Device, req *http.Request, userID int) (*URL, error) {
 	if d.Model == types.SaModel {
-		return ""
+		return nil, nil
+	}
+	token, err := oauth.GetUserPluginToken(userID, req, d.AreaID)
+	if err != nil {
+		return nil, err
 	}
 
 	q := map[string]interface{}{
 		"device_id": d.ID,
-		"identity":  d.Identity,
+		"iid":       d.IID,
 		"model":     d.Model,
 		"name":      d.Name,
 		"token":     token,
-		"type":      GetGlobalClient().DeviceConfig(d).Type,
+		"type":      GetGlobalClient().DeviceConfig(d.PluginID, d.Model).Type,
 		"sa_id":     config.GetConf().SmartAssistant.ID,
 		"plugin_id": d.PluginID,
 	}
-	controlPath := ConcatPluginPath(d.PluginID, GetGlobalClient().DeviceConfig(d).Control)
-	return url.BuildURL(controlPath, q, req)
-}
-
-// RelativeControlPath 返回设备的插件控制页相对路径
-func RelativeControlPath(d entity.Device, token string) string {
-	if d.Model == types.SaModel {
-		return ""
-	}
-
-	q := map[string]interface{}{
-		"device_id": d.ID,
-		"identity":  d.Identity,
-		"model":     d.Model,
-		"name":      d.Name,
-		"token":     token,
-		"sa_id":     config.GetConf().SmartAssistant.ID,
-		"plugin_id": d.PluginID,
-	}
-	return fmt.Sprintf("%s?%s", GetGlobalClient().DeviceConfig(d).Control, url.Join(url.BuildQuery(q)))
+	controlPath := ConcatPluginPath(d.PluginID, GetGlobalClient().DeviceConfig(d.PluginID, d.Model).Control)
+	return &URL{url.BuildURL(controlPath, q, req)}, nil
 }
 
 // ArchiveURL 插件的前端压缩包地址
@@ -148,5 +216,5 @@ func ArchiveURL(pluginID string, req *http.Request) string {
 
 	fileName := fmt.Sprintf("%s.zip", pluginID)
 	path := ConcatPluginPath(pluginID, "resources/archive", fileName)
-	return url.BuildURL(path, nil, req)
+	return url.BuildURL(path, nil, req).String()
 }

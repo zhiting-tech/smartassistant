@@ -2,13 +2,15 @@ package entity
 
 import (
 	"encoding/json"
-	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/attribute"
 	"time"
+
+	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2/definer"
+	"github.com/zhiting-tech/smartassistant/pkg/thingmodel"
+
+	"gorm.io/datatypes"
 
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
-	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/server"
-	"gorm.io/datatypes"
 )
 
 type ConditionType int
@@ -21,9 +23,12 @@ const (
 type OperatorType string
 
 const (
-	OperatorGT OperatorType = ">"
-	OperatorLT OperatorType = "<"
-	OperatorEQ OperatorType = "="
+	OperatorGT      OperatorType = ">"
+	OperatorGTE     OperatorType = ">="
+	OperatorLT      OperatorType = "<"
+	OperatorLTE     OperatorType = "<="
+	OperatorEQ      OperatorType = "="
+	OperatorBetween OperatorType = "between"
 )
 
 // SceneCondition 场景条件
@@ -58,7 +63,7 @@ type ConditionInfo struct {
 }
 
 // CheckCondition 触发条件校验
-func (c ConditionInfo) CheckCondition(userId int) (err error) {
+func (c ConditionInfo) CheckCondition(userId int, isRequireNotify bool) (err error) {
 	if err = c.checkConditionType(); err != nil {
 		return
 	}
@@ -70,7 +75,7 @@ func (c ConditionInfo) CheckCondition(userId int) (err error) {
 		}
 	} else {
 		// 设备状态变化时
-		if err = c.checkConditionDevice(userId); err != nil {
+		if err = c.checkConditionDevice(userId, isRequireNotify); err != nil {
 			return
 		}
 	}
@@ -96,20 +101,20 @@ func (c ConditionInfo) checkConditionTypeTiming() (err error) {
 }
 
 // checkConditionDevice 校验设备类型
-func (c ConditionInfo) checkConditionDevice(userId int) (err error) {
+func (c ConditionInfo) checkConditionDevice(userId int, isRequireNotify bool) (err error) {
 	if c.DeviceID <= 0 || c.Timing != 0 {
 		err = errors.New(status.ConditionMisMatchTypeAndConfigErr)
 		return
 	}
 
-	if err = c.CheckConditionItem(userId, c.DeviceID); err != nil {
+	if err = c.CheckConditionItem(userId, c.DeviceID, isRequireNotify); err != nil {
 		return
 	}
 	return
 }
 
 // CheckConditionItem 触发条件为设备状态变化时，校验对应参数
-func (d SceneCondition) CheckConditionItem(userId, deviceId int) (err error) {
+func (d SceneCondition) CheckConditionItem(userId, deviceId int, isRequireNotify bool) (err error) {
 	if err = d.checkOperatorType(); err != nil {
 		return
 	}
@@ -118,10 +123,15 @@ func (d SceneCondition) CheckConditionItem(userId, deviceId int) (err error) {
 		err = errors.Wrap(err, errors.InternalServerErr)
 		return
 	}
-
-	// 如果设备的属性是只读，例如传感器，则默认有权限（这种属性，不需要权限控制）
-	// TODO 这里信任了前端给予的数据，后期需要做调整
-	if item.Permission == attribute.AttrPermissionOnlyRead {
+	item.Permission = GetPermission(deviceId, item.AID)
+	// 通过属性通知触发的场景任务, 需要属性具有通知权限
+	if isRequireNotify && !item.PermissionNotify() {
+		err = errors.Newf(status.ConditionOfDeviceAttrWithoutNotifyPermission)
+		return
+	}
+	// 通过定时查询属性状态触发的场景任务, 需要属性具有读权限
+	if !isRequireNotify && !item.PermissionRead() {
+		err = errors.Newf(status.ConditionOfDeviceAttrWithoutReadPermission)
 		return
 	}
 
@@ -131,6 +141,34 @@ func (d SceneCondition) CheckConditionItem(userId, deviceId int) (err error) {
 		return
 	}
 
+	return
+}
+
+// GetPermission 获取属性的权限
+func GetPermission(deviceId int, aid int) (permission uint) {
+	device, err := GetDeviceByID(deviceId)
+	if err != nil {
+		return
+	}
+
+	das, err := device.GetThingModel()
+	if err != nil {
+		return
+	}
+	for _, instance := range das.Instances {
+		if instance.IID != device.IID {
+			continue
+		}
+		for _, srv := range instance.Services {
+			for _, attr := range srv.Attributes {
+				if attr.AID != aid {
+					continue
+				}
+				permission = attr.Permission
+				return
+			}
+		}
+	}
 	return
 }
 
@@ -152,7 +190,7 @@ func (d SceneCondition) checkOperatorType() (err error) {
 }
 
 // GetScenesByCondition 根据条件获取场景
-func GetScenesByCondition(deviceID int, attr Attribute) (scenes []Scene, err error) {
+func GetScenesByCondition(deviceID int, attr definer.AttributeEvent) (scenes []Scene, err error) {
 	conds, err := GetConditions(deviceID, attr)
 	var sceneIDs []int
 	for _, cond := range conds {
@@ -169,19 +207,17 @@ func GetScenesByCondition(deviceID int, attr Attribute) (scenes []Scene, err err
 }
 
 // GetConditions 获取符合设备属性的条件
-func GetConditions(deviceID int, attr Attribute) (conds []SceneCondition, err error) {
+func GetConditions(deviceID int, ae definer.AttributeEvent) (conds []SceneCondition, err error) {
 
 	var (
 		deviceConds []SceneCondition
 	)
 
 	attrQuery := datatypes.JSONQuery("condition_attr").
-		Equals(attr.Attribute.Attribute, "attribute")
-	instanceIDQuery := datatypes.JSONQuery("condition_attr").
-		Equals(attr.InstanceID, "instance_id")
+		Equals(ae.AID, "aid")
 
 	if err = GetDB().Where("device_id=?", deviceID).
-		Find(&deviceConds, attrQuery, instanceIDQuery).Error; err != nil {
+		Find(&deviceConds, attrQuery).Error; err != nil {
 		return
 	}
 	for _, cond := range deviceConds {
@@ -194,7 +230,7 @@ func GetConditions(deviceID int, attr Attribute) (conds []SceneCondition, err er
 			continue
 		}
 
-		if item.Operate(cond.Operator, attr.Val) {
+		if item.Operate(cond.Operator, ae.Val) {
 			conds = append(conds, cond)
 		}
 	}
@@ -202,8 +238,7 @@ func GetConditions(deviceID int, attr Attribute) (conds []SceneCondition, err er
 }
 
 type Attribute struct {
-	server.Attribute
-	InstanceID int `json:"instance_id"`
+	thingmodel.Attribute
 }
 
 func (attr *Attribute) Operate(operatorType OperatorType, val interface{}) bool {

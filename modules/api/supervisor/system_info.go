@@ -26,7 +26,7 @@ func GetSystemInfo(c *gin.Context) {
 		response.HandleResponse(c, err, &resp)
 	}()
 
-	grpcResp, err = supervisor.GetClient().SystemInfo()
+	grpcResp, err = supervisor.GetClient().SystemInfoWithContext(c.Request.Context())
 	if err != nil {
 		err = errors.Wrap(err, status.GetFirmwareVersionErr)
 		return
@@ -49,7 +49,7 @@ func GetSystemLastVersion(c *gin.Context) {
 		response.HandleResponse(c, err, &resp)
 	}()
 
-	result, err = cloud.GetLastFirmwareVersion()
+	result, err = cloud.GetLastFirmwareVersionWithContext(c.Request.Context())
 	if err != nil {
 		err = errors.Wrap(err, status.GetFirmwareVersionErr)
 		return

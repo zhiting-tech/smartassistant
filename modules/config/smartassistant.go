@@ -6,14 +6,13 @@ import (
 )
 
 type SmartAssistant struct {
-	ID             string   `json:"id" yaml:"id"`
-	Key            string   `json:"key" yaml:"key"`
-	Db             string   `json:"db" yaml:"db"`
-	Host           string   `json:"host" yaml:"host"`
-	Port           int      `json:"port" yaml:"port"`
-	GRPCPort       int      `json:"grpc_port" yaml:"grpc_port"`
-	FluentdAddress string   `json:"fluentd_address" yaml:"fluentd_address"`
-	Database       Database `json:"database" yaml:"database"`
+	ID       string   `json:"id" yaml:"id"`
+	Key      string   `json:"key" yaml:"key"`
+	Db       string   `json:"db" yaml:"db"`
+	Host     string   `json:"host" yaml:"host"`
+	Port     int      `json:"port" yaml:"port"`
+	GRPCPort int      `json:"grpc_port" yaml:"grpc_port"`
+	Database Database `json:"database" yaml:"database"`
 	// HostDataPath 宿主机runtime目录
 	HostRuntimePath string `json:"host_runtime_path" yaml:"host_runtime_path"`
 	RuntimePath     string `json:"runtime_path" yaml:"runtime_path"`
@@ -47,4 +46,8 @@ func (sa SmartAssistant) BackupPath() string {
 
 func (sa SmartAssistant) DataPath() string {
 	return filepath.Join(sa.RuntimePath, "data")
+}
+
+func (sa SmartAssistant) VolumePath() string {
+	return filepath.Join(sa.RuntimePath, "volume")
 }

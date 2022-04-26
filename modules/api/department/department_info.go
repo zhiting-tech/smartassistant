@@ -1,41 +1,43 @@
 package department
 
 import (
+	"sort"
+	"strconv"
+
 	"github.com/gin-gonic/gin"
-	"github.com/zhiting-tech/smartassistant/modules/api/device"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/location"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
+	"github.com/zhiting-tech/smartassistant/modules/file"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
-	"sort"
-	"strconv"
 )
 
 type infoDepartment struct {
-	Users     []departmentUser `json:"users"`
-	Name 	  string			`json:"name"`
-	Devices   []location.InfoDevice `json:"devices"`
+	Users   []departmentUser  `json:"users"`
+	Name    string            `json:"name"`
+	Devices []location.Device `json:"devices"`
 }
 
 type departmentUser struct {
 	entity.UserInfo
-	IsManager   bool   `json:"is_manager"`   // 是否是主管
+	IsManager bool `json:"is_manager"` // 是否是主管
 }
 
 // InfoDepartment 返回部门信息
 func InfoDepartment(c *gin.Context) {
 	var (
-		err         error
+		err          error
 		departmentId int
-		infoDevices []location.InfoDevice
-		department  entity.Department
-		resp  		infoDepartment
+		infoDevices  []location.Device
+		department   entity.Department
+		resp         infoDepartment
 	)
 
 	defer func() {
 		if resp.Devices == nil {
-			resp.Devices = make([]location.InfoDevice, 0)
+			resp.Devices = make([]location.Device, 0)
 		}
 		if resp.Users == nil {
 			resp.Users = make([]departmentUser, 0)
@@ -51,7 +53,7 @@ func InfoDepartment(c *gin.Context) {
 	if department, err = entity.GetDepartmentByID(departmentId); err != nil {
 		return
 	}
-	infoUsers, err := GetDepartmentUsers(departmentId, session.Get(c).AreaID, department.ManagerID)
+	infoUsers, err := GetDepartmentUsers(c, departmentId, session.Get(c).AreaID, department.ManagerID)
 	if err != nil {
 		return
 	}
@@ -64,7 +66,7 @@ func InfoDepartment(c *gin.Context) {
 	resp.Devices = infoDevices
 }
 
-func GetDepartmentUsers(department int, areaID uint64, managerID *int) (infoUsers []departmentUser, err error) {
+func GetDepartmentUsers(c *gin.Context, department int, areaID uint64, managerID *int) (infoUsers []departmentUser, err error) {
 	var (
 		users []entity.User
 		owner entity.User
@@ -81,20 +83,22 @@ func GetDepartmentUsers(department int, areaID uint64, managerID *int) (infoUser
 	}
 
 	for _, u := range users {
+		imgUrl, _ := file.GetFileUrl(c, u.AvatarID)
 		infoUser := entity.UserInfo{
-			UserId: u.ID,
-			Nickname: u.Nickname,
+			UserId:        u.ID,
+			Nickname:      u.Nickname,
 			IsSetPassword: u.Password != "",
+			AvatarUrl:     imgUrl,
 		}
 		if owner.ID == u.ID {
 			infoUser.RoleInfos = []entity.RoleInfo{{ID: entity.OwnerRoleID, Name: entity.Owner}}
-		}else {
+		} else {
 			infoUser.RoleInfos, err = entity.GetRoleInfos(u.ID)
 		}
 
 		isManager := managerID != nil && *managerID == u.ID
 		infoUsers = append(infoUsers, departmentUser{
-			UserInfo: infoUser,
+			UserInfo:  infoUser,
 			IsManager: isManager,
 		})
 	}
@@ -109,7 +113,7 @@ func GetDepartmentUsers(department int, areaID uint64, managerID *int) (infoUser
 }
 
 // GetDeviceByDepartmentID 获取部门下的设备
-func GetDeviceByDepartmentID(departmentID int, c *gin.Context) (infoDevices []location.InfoDevice, err error) {
+func GetDeviceByDepartmentID(departmentID int, c *gin.Context) (infoDevices []location.Device, err error) {
 	var (
 		devices []entity.Device
 	)
@@ -117,19 +121,9 @@ func GetDeviceByDepartmentID(departmentID int, c *gin.Context) (infoDevices []lo
 	if err != nil {
 		return
 	}
-	deviceInfos, err := device.WrapDevices(c, devices, device.AllDevice)
+	infoDevices, err = location.WrapDevices(c, devices)
 	if err != nil {
 		return
-	}
-	for _, di := range deviceInfos {
-		infoDevices = append(infoDevices, location.InfoDevice{
-			ID:        di.ID,
-			LogoURL:   di.LogoURL,
-			Name:      di.Name,
-			IsSa:      di.IsSA,
-			PluginURL: di.PluginURL,
-			PluginID:  di.PluginID,
-		})
 	}
 
 	return

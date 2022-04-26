@@ -1,16 +1,18 @@
 package smartcloud
 
 import (
-	"github.com/zhiting-tech/smartassistant/modules/api/scope"
-	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth"
-	"github.com/zhiting-tech/smartassistant/modules/types"
-	"github.com/zhiting-tech/smartassistant/pkg/logger"
-	"gopkg.in/oauth2.v3"
-	"gopkg.in/oauth2.v3/server"
 	"strconv"
 	"strings"
 
+	"gopkg.in/oauth2.v3"
+	"gopkg.in/oauth2.v3/server"
+
+	"github.com/zhiting-tech/smartassistant/modules/api/scope"
+	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth"
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
+
 	"github.com/gin-gonic/gin"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
@@ -117,13 +119,11 @@ func GetCloudDiskToken(userInfo entity.User, c *gin.Context) (resp GetTokenResp,
 }
 
 func getCloudDiskToken(userInfo entity.User, c *gin.Context) (resp GetTokenResp, err error) {
-	saClient, err := entity.GetSAClient()
+	saClient, err := entity.GetSAClient(userInfo.AreaID)
 	if err != nil {
 		return
 	}
 
-	c.Request.Header.Set(types.AreaID, strconv.FormatUint(userInfo.AreaID, 10))
-	c.Request.Header.Set(types.UserKey, userInfo.Key)
 	tgr := &server.AuthorizeRequest{
 		ResponseType:   oauth2.Token,
 		ClientID:       saClient.ClientID,

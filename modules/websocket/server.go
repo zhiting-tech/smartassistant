@@ -4,15 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/zhiting-tech/smartassistant/modules/entity"
-	event2 "github.com/zhiting-tech/smartassistant/modules/event"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+
+	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
+	"github.com/zhiting-tech/smartassistant/pkg/event"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
+	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2/definer"
 )
 
 var (
@@ -90,13 +92,24 @@ func (s *Server) Run(ctx context.Context) {
 	logger.Warning("websocket server stopped")
 }
 
-// OnDeviceChange 设备状态,数量改变回调，会广播给所有客户端，并且触发场景
-func (s *Server) OnDeviceChange(em event2.EventMessage) error {
-	event := NewEvent(string(em.EventType))
+type AttrChangeEvent struct {
+	PluginID string                 `json:"plugin_id"`
+	Attr     definer.AttributeEvent `json:"attr"`
+}
+
+type DeviceIncreaseEvent struct {
+	Device entity.Device `json:"device"`
+}
+
+// BroadcastMsg 设备状态,数量改变回调，会广播给所有客户端，并且触发场景
+func (s *Server) BroadcastMsg(em event.EventMessage) error {
+	ev := NewEvent(string(em.EventType))
 	areaID := em.AreaID
 	switch em.EventType {
-	case event2.DeviceIncrease, event2.DeviceDecrease:
-	case event2.AttributeChange:
+	case event.DeviceDecrease:
+	case event.DeviceIncrease:
+		ev.Data = em.Param
+	case event.AttributeChange:
 		deviceID := em.GetDeviceID()
 		d, err := entity.GetDeviceByID(deviceID)
 		if err != nil {
@@ -107,14 +120,13 @@ func (s *Server) OnDeviceChange(em event2.EventMessage) error {
 			logger.Warn("attr is nil")
 			return nil
 		}
-		event.Data = map[string]interface{}{
-			"identity":    d.Identity,
-			"instance_id": attr.InstanceID,
-			"attr":        attr.Attribute,
-			"domain":      d.PluginID,
+
+		ev.Data = AttrChangeEvent{
+			PluginID: d.PluginID,
+			Attr:     *attr,
 		}
 	}
-	data, _ := json.Marshal(event)
+	data, _ := json.Marshal(ev)
 	s.Broadcast(areaID, data)
 	return nil
 }

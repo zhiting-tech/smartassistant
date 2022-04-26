@@ -2,10 +2,21 @@ package clouddisk
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	errors2 "errors"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"sync"
+	"time"
+
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/zhiting-tech/smartassistant/pkg/http/httpclient"
+
 	"github.com/gin-gonic/gin"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/extension"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/cloud"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
@@ -13,10 +24,6 @@ import (
 	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
-	"io/ioutil"
-	"net/http"
-	"sync"
-	"time"
 )
 
 const (
@@ -40,18 +47,19 @@ var onDelAreas sync.Map
 // DelAreaCloudDisk 删除家庭的网盘资源
 // isDelCloudDiskFile 是表示是否删除网盘文件，不管删不删除文件，一定会删除网盘记录
 func DelAreaCloudDisk(c *gin.Context, isDelCloudDiskFile bool, areaID uint64) (result DelCloudDiskResp, err error) {
-	if !extension.HasExtension(types.CloudDisk) {
+	if !extension.HasExtensionWithContext(c.Request.Context(), types.CloudDisk) {
 		err = errors.New(errors.BadRequest)
 		return
 	}
 
 	accessToken := c.GetHeader(types.SATokenKey)
-	if result, err = DelCloudDisk(accessToken, isDelCloudDiskFile, areaID); err != nil {
+	ctx := c.Request.Context()
+	if result, err = DelCloudDiskWithContext(c.Request.Context(), accessToken, isDelCloudDiskFile, areaID); err != nil {
 		return
 	}
 
 	if !isDelCloudDiskFile && result.Data.RemoveStatus != CloudDiskDelSuccess {
-		err = DelArea(areaID)
+		err = DelAreaWithContext(c.Request.Context(), areaID)
 		result.Data.RemoveStatus = CloudDiskDelSuccess
 		return
 	}
@@ -59,14 +67,14 @@ func DelAreaCloudDisk(c *gin.Context, isDelCloudDiskFile bool, areaID uint64) (r
 	if result.Data.RemoveStatus != CloudDiskDelSuccess {
 		_, loaded := onDelAreas.LoadOrStore(areaID, nil)
 		if !loaded {
-			go beginPollingDelCloudDisk(accessToken, isDelCloudDiskFile, areaID)
+			go beginPollingDelCloudDisk(ctx, accessToken, isDelCloudDiskFile, areaID)
 		}
 	}
 	return
 }
 
-// DelCloudDisk 删除网盘资源
-func DelCloudDisk(accessToken string, isDelCloudDiskFile bool, areaID uint64) (result DelCloudDiskResp, err error) {
+// DelCloudDiskWithContext 删除网盘资源
+func DelCloudDiskWithContext(ctx context.Context, accessToken string, isDelCloudDiskFile bool, areaID uint64) (result DelCloudDiskResp, err error) {
 	url := fmt.Sprintf("http://%s/wangpan/api/folders", types.CloudDiskAddr)
 	param := map[string]interface{}{
 		"is_del_cloud_disk": isDelCloudDiskFile,
@@ -74,15 +82,16 @@ func DelCloudDisk(accessToken string, isDelCloudDiskFile bool, areaID uint64) (r
 
 	// 2  序列化数据
 	content, _ := json.Marshal(param)
-	request, err := http.NewRequest("DELETE", url, bytes.NewReader(content))
+	// 复制父span到新的context中, 保证context被返回还保留着spanID的关联
+	newCtx := trace.ContextWithSpan(context.Background(), trace.SpanFromContext(ctx))
+	request, err := http.NewRequestWithContext(newCtx, http.MethodDelete, url, bytes.NewReader(content))
 	if err != nil {
 		err = errors.Wrap(err, errors.InternalServerErr)
 		return
 	}
-	// 3、获取scope-token并放入header
-	request.Header.Set("scope-token", accessToken)
-
-	client := &http.Client{Timeout: 60 * time.Second}
+	// 3、获取token并放入header
+	request.Header.Set(types.SATokenKey, accessToken)
+	client := httpclient.NewHttpClient(httpclient.WithTimeout(60 * time.Second))
 	response, err := client.Do(request)
 	if err != nil {
 		err = errors.Wrap(err, errors.InternalServerErr)
@@ -90,7 +99,7 @@ func DelCloudDisk(accessToken string, isDelCloudDiskFile bool, areaID uint64) (r
 	}
 	if response.StatusCode != http.StatusOK {
 		logger.Errorf("del cloud disk err of response statusCode %d", response.StatusCode)
-		err = errors.New(errors.InternalServerErr)
+		err = errors.Wrap(errors2.New("request cloud disk err"), errors.InternalServerErr)
 		return
 	}
 	defer response.Body.Close()
@@ -106,13 +115,13 @@ func DelCloudDisk(accessToken string, isDelCloudDiskFile bool, areaID uint64) (r
 	}
 
 	if result.Data.RemoveStatus == CloudDiskDelSuccess {
-		err = DelArea(areaID)
+		err = DelAreaWithContext(newCtx, areaID)
 	}
 	return
 }
 
 // beginPollingDelCloudDisk 开始轮询网盘删除
-func beginPollingDelCloudDisk(accessToken string, isDelCloudDiskFile bool, areaID uint64) {
+func beginPollingDelCloudDisk(ctx context.Context, accessToken string, isDelCloudDiskFile bool, areaID uint64) {
 	defer func() {
 		onDelAreas.Delete(areaID)
 	}()
@@ -128,7 +137,7 @@ func beginPollingDelCloudDisk(accessToken string, isDelCloudDiskFile bool, areaI
 		select {
 		case <-ticker.C:
 			var result DelCloudDiskResp
-			result, err = DelCloudDisk(accessToken, isDelCloudDiskFile, areaID)
+			result, err = DelCloudDiskWithContext(ctx, accessToken, isDelCloudDiskFile, areaID)
 			if err != nil {
 				logger.Errorf("pollingCloudDisk del err %s", err.Error())
 				return
@@ -141,7 +150,7 @@ func beginPollingDelCloudDisk(accessToken string, isDelCloudDiskFile bool, areaI
 	}
 }
 
-func DelArea(areaID uint64) (err error) {
+func DelAreaWithContext(ctx context.Context, areaID uint64) (err error) {
 	_, err = entity.GetAreaByID(areaID)
 	if err != nil {
 		return
@@ -154,7 +163,7 @@ func DelArea(areaID uint64) (err error) {
 		err = errors.Wrap(err, errors.InternalServerErr)
 		return
 	}
-	cloud.RemoveSA(areaID)
+	cloud.RemoveSAWithContext(ctx, areaID)
 	for _, p := range plugins {
 		if err2 := docker.GetClient().StopContainer(p.Image); err2 != nil {
 			logger.Warnf("del area stop container %s", err2)

@@ -1,6 +1,8 @@
 package brand
 
 import (
+	"context"
+
 	"github.com/gin-gonic/gin"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/plugin"
@@ -17,11 +19,11 @@ type handlePluginsResp struct {
 	SuccessPlugins []string `json:"success_plugins"`
 }
 
-func (req handlePluginsReq) GetPlugins() (plugins []*plugin.Plugin, err error) {
+func (req handlePluginsReq) GetPluginsWithContext(ctx context.Context) (plugins []*plugin.Plugin, err error) {
 
 	if len(req.Plugins) == 0 { // 没有指定插件时，更新品牌所有插件
 		var plgs map[string]*plugin.Plugin
-		plgs, err = plugin.GetGlobalManager().LoadPlugins()
+		plgs, err = plugin.GetGlobalManager().LoadPluginsWithContext(ctx)
 		if err != nil {
 			return
 		}
@@ -34,7 +36,7 @@ func (req handlePluginsReq) GetPlugins() (plugins []*plugin.Plugin, err error) {
 	} else {
 		for _, pluginID := range req.Plugins {
 			var plg *plugin.Plugin
-			plg, err = plugin.GetGlobalManager().GetPlugin(pluginID)
+			plg, err = plugin.GetGlobalManager().GetPluginWithContext(ctx, pluginID)
 			if err != nil {
 				return
 			}
@@ -63,7 +65,7 @@ func UpdatePlugin(c *gin.Context) {
 		return
 	}
 
-	plgs, err := req.GetPlugins()
+	plgs, err := req.GetPluginsWithContext(c.Request.Context())
 	if err != nil {
 		return
 	}

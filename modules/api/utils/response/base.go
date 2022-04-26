@@ -1,8 +1,11 @@
 package response
 
 import (
-	"github.com/zhiting-tech/smartassistant/pkg/logger"
 	"net/http"
+
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/gin-gonic/gin"
 
@@ -36,4 +39,14 @@ func HandleResponse(ctx *gin.Context, err error, response interface{}) {
 func HandleResponseWithStatus(ctx *gin.Context, status int, err error, response interface{}) {
 	baseResult := getResponse(err, response)
 	ctx.JSON(status, baseResult)
+
+	TraceLogIfError(ctx, baseResult)
+}
+
+func TraceLogIfError(ctx *gin.Context, result *BaseResponse) {
+	if result.Status != 0 {
+		span := trace.SpanFromContext(ctx.Request.Context())
+		span.SetAttributes(attribute.Int("smartassistant.StatusCode", result.Status))
+		span.SetAttributes(attribute.String("smartassistant.Reason", result.Reason))
+	}
 }

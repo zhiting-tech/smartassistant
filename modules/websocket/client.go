@@ -4,16 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	errors2 "errors"
-	"github.com/gin-gonic/gin"
-	"google.golang.org/grpc/status"
+	"fmt"
+	"sync"
 	"time"
 
+	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc/status"
+
 	ws "github.com/gorilla/websocket"
+	"gorm.io/gorm"
+
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/plugin"
+	status2 "github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
+	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
-	"gorm.io/gorm"
 )
 
 type client struct {
@@ -44,52 +50,64 @@ type DeviceWrap struct {
 
 // 解析 WebSocket 消息，并且调用业务逻辑
 func (cli *client) handleWsMessage(data []byte, user *session.User) (err error) {
-	var cs callService
-	if err = json.Unmarshal(data, &cs); err != nil {
+	var req Request
+	if err = json.Unmarshal(data, &req); err != nil {
 		return
 	}
+	req.ginCtx = cli.ginCtx
 
-	logger.Debugf("domain:%s,service:%s,data:%s\n", cs.Domain, cs.Service, string(cs.ServiceData))
+	logger.Debugf("domain:%s,service:%s,data:%s\n", req.Domain, req.Service, string(req.Data))
 
 	// 请参考 docs/guide/web-socket-api.md 中的定义
 	// 如果消息类型持续增多，请拆分
-	if cs.Service == serviceDiscover { // 写死的发现命令，优先级最高，忽略 domain，发送给所有插件
-		return cli.discover(cs, user)
+	if req.Service == serviceDiscover { // 写死的发现命令，优先级最高，忽略 domain，发送给所有插件
+		return cli.discover(req, user)
 	}
 
-	cs.callUser = *user
-	return cli.handleCallService(cs) // 通过插件服务和设备通信
+	req.user = *user
+	return cli.handleCallService(req) // 通过插件服务和设备通信
 }
 
-func (cli *client) discover(cs callService, user *session.User) (err error) {
+type DiscoverResponse struct {
+	Device plugin.DiscoverResponse `json:"device"`
+}
+
+func (cli *client) discover(req Request, user *session.User) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	var discovered sync.Map
 	ch := plugin.GetGlobalClient().DevicesDiscover(ctx)
-	for result := range ch {
-		resp := NewResponse(cs.ID)
+	for r := range ch {
+
+		y := plugin.Identify{
+			PluginID: r.PluginID,
+			IID:      r.IID,
+			AreaID:   user.AreaID,
+		}
+		// 过滤相同的设备
+		if _, loaded := discovered.LoadOrStore(y.ID(), struct{}{}); loaded {
+			continue
+		}
+		resp := NewResponse(req.ID)
 		resp.Success = true
-		_, err = entity.GetPluginDevice(user.AreaID, result.PluginID, result.Identity)
+		_, err := entity.GetPluginDevice(user.AreaID, r.PluginID, r.IID)
 		if errors2.Is(err, gorm.ErrRecordNotFound) {
-			d := entity.Device{
-				Identity:     result.Identity,
-				Model:        result.Model,
-				Manufacturer: result.Manufacturer,
-				PluginID:     result.PluginID,
-			}
-			result.LogoURL = plugin.DeviceLogoURL(cli.ginCtx.Request, d)
-			resp.AddResult("device", result)
+			r.LogoURL = plugin.DeviceLogoURL(cli.ginCtx.Request, r.PluginID, r.Model)
+			resp.Data = DiscoverResponse{Device: r}
 			msg, _ := json.Marshal(resp)
 			cli.send <- msg
 		}
 	}
-	return
-
+	return nil
 }
 
-func (cli *client) handleCallService(cs callService) (err error) {
+func (cli *client) handleCallService(req Request) (err error) {
 
-	resp := NewResponse(cs.ID)
+	resp := NewResponse(req.ID)
 	defer func() {
+		if r := recover(); r != nil {
+			err = errors2.New(fmt.Sprintf("handleCallService err: %v", r))
+		}
 		if err != nil {
 			s := status.Convert(err)
 			resp.Error.Code = s.Code()
@@ -99,14 +117,19 @@ func (cli *client) handleCallService(cs callService) (err error) {
 		}
 		msg, _ := json.Marshal(resp)
 		cli.send <- msg
-		logger.Debugf("cs: %v, response msg: %s", cs, string(msg))
+		logger.Debugf("req: %v, response msg: %s", req, string(msg))
 	}()
-
-	callFunc, ok := callFunctions[cs.Service]
-	if !ok {
+	if req.Service == "" {
+		err = errors.New(status2.WebsocketDomainRequired)
 		return
 	}
-	resp.Result, err = callFunc(cs)
+
+	callFunc, ok := callFunctions[req.Service]
+	if !ok {
+		err = errors.New(status2.WebsocketCommandNotFound)
+		return
+	}
+	resp.Data, err = callFunc(req)
 	return
 }
 

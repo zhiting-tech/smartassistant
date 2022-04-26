@@ -3,8 +3,9 @@ package scene
 import (
 	"encoding/json"
 	errors2 "errors"
-	"github.com/zhiting-tech/smartassistant/modules/plugin"
 	"net/http"
+
+	device2 "github.com/zhiting-tech/smartassistant/modules/device"
 
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
@@ -14,8 +15,9 @@ import (
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
 
 	"github.com/gin-gonic/gin"
-	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"gorm.io/gorm"
+
+	"github.com/zhiting-tech/smartassistant/pkg/errors"
 )
 
 // 场景状态
@@ -220,7 +222,7 @@ func WrapCondition(ctx *gin.Context, sceneID, userID int) (sceneCondition sceneC
 				canControlDevice = false
 				return
 			}
-			if !up.IsDeviceAttrPermit(c.DeviceID, conditionItem) {
+			if !up.IsDeviceAttrControlPermit(c.DeviceID, conditionItem.AID) {
 				canControlDevice = false
 				return
 			}
@@ -337,7 +339,7 @@ func checkControlPermission(c *gin.Context, sceneID int, userID int, checked map
 			}
 			// 判断设备每一个操作的控制权限
 			for _, device := range item.devices {
-				if !up.IsDeviceAttrPermit(item.ID, device) {
+				if !up.IsDeviceAttrControlPermit(item.ID, device.AID) {
 					controlPermission = false
 					checked[sceneID] = false
 					return
@@ -371,7 +373,7 @@ func WrapDeviceItem(item *Item, req *http.Request) (err error) {
 		return
 	}
 
-	item.LogoURL = plugin.DeviceLogoURL(req, device)
+	item.LogoURL = device2.LogoURL(req, device)
 
 	if device.Deleted.Valid {
 		// 设备已删除

@@ -2,14 +2,15 @@ package supervisor
 
 import (
 	"context"
-	"log"
-	"os"
-	"sync"
-
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/supervisor/proto"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"log"
+	"os"
+	"strings"
+	"sync"
 )
 
 const (
@@ -41,7 +42,12 @@ type SupervisorClient struct {
 func NewSupervisorClient() *SupervisorClient {
 	addr := DefaultSocketAddr
 	fromEnv(&addr)
-	conn, err := grpc.Dial(addr, grpc.WithInsecure())
+	conn, err := grpc.Dial(
+		addr,
+		grpc.WithInsecure(),
+		grpc.WithChainUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
+		grpc.WithChainStreamInterceptor(otelgrpc.StreamClientInterceptor()),
+	)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -50,7 +56,7 @@ func NewSupervisorClient() *SupervisorClient {
 	}
 }
 
-func (c *SupervisorClient) Restart(name string) (err error) {
+func (c *SupervisorClient) RestartWithContext(ctx context.Context, name string) (err error) {
 
 	if len(name) == 0 {
 		name = currentSAImage().RefStr()
@@ -59,33 +65,36 @@ func (c *SupervisorClient) Restart(name string) (err error) {
 		Image:    currentSAImage().RefStr(),
 		NewImage: name,
 	}
-	_, err = c.client.Restart(context.Background(), req)
+	_, err = c.client.Restart(ctx, req)
 	return err
 }
 
-func (c *SupervisorClient) Update(req *proto.UpdateReq) (err error) {
-	_, err = c.client.Update(context.Background(), req)
+func (c *SupervisorClient) UpdateWithContext(ctx context.Context, req *proto.UpdateReq) (err error) {
+	_, err = c.client.Update(ctx, req)
 	return err
 }
 
-func (c *SupervisorClient) UpdateSystem(systemImage string) error {
+func (c *SupervisorClient) UpdateSystemWithContext(ctx context.Context, systemImage string) error {
 	req := &proto.UpdateSystemReq{
 		Image: systemImage,
 	}
-	_, err := c.client.UpdateSystem(context.TODO(), req)
+	_, err := c.client.UpdateSystem(ctx, req)
 	return err
 }
 
-func (c *SupervisorClient) SystemInfo() (*proto.GetSystemInfoResp, error) {
-	return c.client.GetSystemInfo(context.TODO(), &emptypb.Empty{})
+func (c *SupervisorClient) SystemInfoWithContext(ctx context.Context) (*proto.GetSystemInfoResp, error) {
+	return c.client.GetSystemInfo(ctx, &emptypb.Empty{})
 }
 
-func (c *SupervisorClient) BackupSmartassistant(note string) (err error) {
+func (c *SupervisorClient) BackupSmartassistantWithContext(ctx context.Context, backupInfo entity.BackupInfo) (err error) {
 	var (
 		req proto.BackupReq
 	)
 
-	req.Note = note
+	req.Note = backupInfo.Note
+	req.BackupPath = backupInfo.BackupPath
+	req.FileName = backupInfo.Name
+	req.Extensions = strings.Split(backupInfo.Extensions, ",")
 
 	plugins, err := entity.GetInstalledPlugins()
 	if err != nil {
@@ -108,11 +117,11 @@ func (c *SupervisorClient) BackupSmartassistant(note string) (err error) {
 	req.Smartassistant.Registry = saImage.Registry
 	req.Smartassistant.Version = saImage.Tag
 
-	_, err = c.client.Backup(context.TODO(), &req)
+	_, err = c.client.Backup(ctx, &req)
 	return err
 }
 
-func (c *SupervisorClient) RestoreSmartassistant(file string) (err error) {
+func (c *SupervisorClient) RestoreSmartassistantWithContext(ctx context.Context, file string) (err error) {
 	var (
 		req proto.RestoreReq
 	)
@@ -140,11 +149,31 @@ func (c *SupervisorClient) RestoreSmartassistant(file string) (err error) {
 	req.Smartassistant.Registry = saImage.Registry
 	req.Smartassistant.Version = saImage.Tag
 
-	_, err = c.client.Restore(context.TODO(), &req)
+	_, err = c.client.Restore(ctx, &req)
 	return err
 }
 
-func (c *SupervisorClient) GetExtensions() (resp *proto.GetExtensionsResp, err error) {
-	resp, err = c.client.GetExtensions(context.TODO(), &emptypb.Empty{})
+func (c *SupervisorClient) GetExtensionsWithContext(ctx context.Context) (resp *proto.GetExtensionsResp, err error) {
+	resp, err = c.client.GetExtensions(ctx, &emptypb.Empty{})
 	return
+}
+
+func (c *SupervisorClient) EnableRemoteHelpWithContext(ctx context.Context, publicKey []byte) (err error) {
+	_, err = c.client.RemoteHelp(ctx, &proto.RemoteHelpReq{Enable: true, PublicKey: publicKey})
+	return
+}
+
+func (c *SupervisorClient) DisableRemoteHelpWithContext(ctx context.Context) (err error) {
+	_, err = c.client.RemoteHelp(ctx, &proto.RemoteHelpReq{Enable: false})
+	return
+}
+
+func (c *SupervisorClient) RemoteHelpEnabledWithContext(ctx context.Context) (enable bool, err error) {
+	var (
+		resp *proto.RemoteHelpEnabledResp
+	)
+	if resp, err = c.client.RemoteHelpEnabled(ctx, &emptypb.Empty{}); err != nil {
+		return
+	}
+	return resp.Enable, err
 }

@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/zhiting-tech/smartassistant/modules/api/app"
 	"github.com/zhiting-tech/smartassistant/modules/api/area"
 	"github.com/zhiting-tech/smartassistant/modules/api/auth"
 	"github.com/zhiting-tech/smartassistant/modules/api/brand"
@@ -9,10 +10,12 @@ import (
 	"github.com/zhiting-tech/smartassistant/modules/api/department"
 	"github.com/zhiting-tech/smartassistant/modules/api/device"
 	"github.com/zhiting-tech/smartassistant/modules/api/extension"
+	"github.com/zhiting-tech/smartassistant/modules/api/file"
 	"github.com/zhiting-tech/smartassistant/modules/api/location"
 	"github.com/zhiting-tech/smartassistant/modules/api/log"
 	"github.com/zhiting-tech/smartassistant/modules/api/page"
 	"github.com/zhiting-tech/smartassistant/modules/api/plugin"
+	"github.com/zhiting-tech/smartassistant/modules/api/resource"
 	"github.com/zhiting-tech/smartassistant/modules/api/role"
 	"github.com/zhiting-tech/smartassistant/modules/api/scene"
 	"github.com/zhiting-tech/smartassistant/modules/api/scope"
@@ -42,4 +45,7 @@ func loadModules(r gin.IRouter) {
 	log.RegisterLogRouter(r)
 	department.RegisterDepartmentRouter(r)
 	extension.RegisterExtensionRouter(r)
+	file.RegisterFileRouter(r)
+	app.RegisterAppRouter(r)
+	resource.RegisterResourceRouter(r)
 }

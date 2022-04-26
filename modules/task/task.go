@@ -7,9 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zhiting-tech/smartassistant/modules/device"
-
 	"github.com/google/uuid"
+
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
 )
@@ -174,12 +173,12 @@ func IsConditionSatisfied(condition entity.SceneCondition) bool {
 		logger.Error("Unmarshal error:", err)
 		return false
 	}
-	shadow, err := device.GetShadow(d)
+	shadow, err := d.GetShadow()
 	if err != nil {
 		logger.Error("GetAttribute error:", err)
 		return false
 	}
-	val, err := shadow.Get(item.InstanceID, item.Attribute.Attribute)
+	val, err := shadow.Get(d.IID, item.Attribute.AID)
 	if err != nil {
 		logger.Error("shadow get attribute error:", err)
 		return false

@@ -5,130 +5,34 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/sirupsen/logrus"
-	"github.com/zhiting-tech/smartassistant/modules/event"
-	"github.com/zhiting-tech/smartassistant/modules/types"
 	"io"
-	"io/ioutil"
-	"net/http"
 	"sync"
 	"time"
 
 	"github.com/zhiting-tech/smartassistant/modules/entity"
+	event2 "github.com/zhiting-tech/smartassistant/pkg/event"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
-	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/proto"
-	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/server"
+	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/proto/v2"
+	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2"
+	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2/definer"
+	"github.com/zhiting-tech/smartassistant/pkg/thingmodel"
 
-	"go.etcd.io/etcd/client/v3"
-	"go.etcd.io/etcd/client/v3/naming/resolver"
-	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 var NotExistErr = errors.New("plugin not exist")
 
-const (
-	healthCheckInterval = time.Second * 10 // 存活检查间隔
-	offlineTimeout      = time.Second * 15 // 超过这个时间没有响应在线判断为离线
-)
+func NewClient() *client {
+	return &client{
+		clients: make(map[string]*pluginClient),
+	}
+}
 
 type client struct {
 	mu      sync.Mutex // clients 锁
 	clients map[string]*pluginClient
 
-	devicesCancel        sync.Map
-	stateChangeCallbacks []OnDeviceStateChange
-}
-
-func (c *client) DeviceConfigs() (configs []DeviceConfig) {
-
-	for _, cli := range c.clients {
-		for _, d := range cli.PluginConf.SupportDevices {
-			d.PluginID = cli.pluginID
-			configs = append(configs, d)
-		}
-	}
-	return
-}
-
-func (c *client) DeviceConfig(d entity.Device) (config DeviceConfig) {
-	if d.Model == types.SaModel {
-		return
-	}
-
-	cli, err := c.get(d.PluginID)
-	if err != nil {
-		return
-	}
-
-	for _, sd := range cli.PluginConf.SupportDevices {
-		if d.Model != sd.Model {
-			continue
-		}
-		sd.PluginID = cli.pluginID
-		return sd
-	}
-	return
-}
-
-func (c *client) Disconnect(identity, pluginID string, authParams map[string]string) (err error) {
-	req := proto.AuthReq{
-		Identity: identity,
-		Params:   authParams,
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
-	defer cancel()
-	cli, err := c.get(pluginID)
-	if err != nil {
-		return
-	}
-	_, err = cli.protoClient.Disconnect(ctx, &req)
-	if err != nil {
-		return
-	}
-
-	v, loaded := c.devicesCancel.LoadAndDelete(identity)
-	if loaded {
-		if cancel, ok := v.(context.CancelFunc); ok {
-			cancel()
-		}
-	}
-	return nil
-}
-
-func NewClient(callbacks ...OnDeviceStateChange) *client {
-	return &client{
-		clients:              make(map[string]*pluginClient),
-		stateChangeCallbacks: callbacks,
-	}
-}
-
-func (c *client) get(domain string) (*pluginClient, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	cli, ok := c.clients[domain]
-	if ok {
-		return cli, nil
-	}
-	return nil, NotExistErr
-}
-
-func (c *client) Add(cli *pluginClient) {
-
-	c.mu.Lock()
-	c.clients[cli.pluginID] = cli
-	c.mu.Unlock()
-	go c.ListenStateChange(cli.pluginID)
-}
-
-func (c *client) Remove(pluginID string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	cli, ok := c.clients[pluginID]
-	if ok {
-		delete(c.clients, pluginID)
-		go cli.Stop()
-	}
-	return nil
+	devicesCancel sync.Map
 }
 
 // DevicesDiscover 发现设备，并且通过 channel 返回给调用者
@@ -151,78 +55,89 @@ func (c *client) DevicesDiscover(ctx context.Context) <-chan DiscoverResponse {
 	return out
 }
 
-func (c *client) ListenStateChange(pluginID string) {
+func (c *client) DeviceConfigs() (configs []DeviceConfig) {
+
+	for _, cli := range c.clients {
+		for _, d := range cli.PluginConf.SupportDevices {
+			d.PluginID = cli.pluginID
+			configs = append(configs, d)
+		}
+	}
+	return
+}
+
+func (c *client) DeviceConfig(pluginID, model string) (config DeviceConfig) {
 	cli, err := c.get(pluginID)
 	if err != nil {
 		return
 	}
-	pdc, err := cli.protoClient.StateChange(cli.ctx, &proto.Empty{})
-	if err != nil {
-		logger.Error("state onDeviceStateChange error:", err)
-		return
-	}
-	logger.Println("StateChange recv...")
-	for {
-		var resp *proto.State
-		resp, err = pdc.Recv()
-		if err == io.EOF {
-			break
+
+	for _, sd := range cli.PluginConf.SupportDevices {
+		if model != sd.Model {
+			continue
 		}
-		if err != nil {
-			logger.Error(err)
-			// TODO retry
-			break
-		}
-		logger.Debugf("get state onDeviceStateChange resp: %s,%d,%s\n",
-			resp.Identity, resp.InstanceId, string(resp.Attributes))
-
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					logrus.Error(r)
-				}
-			}()
-			var d entity.Device
-
-			// 查看是否存在对应的子设备, 如果存在，则本次推送，是子设备
-			sonDeviceIdentity := fmt.Sprintf("childDevice-%s-%d", resp.Identity, resp.InstanceId)
-			sonDevice, err := entity.GetPluginDevice(cli.areaID, cli.pluginID, sonDeviceIdentity)
-			if err == nil {
-				d = sonDevice
-			} else {
-				// 如果不存在对应的子设备，则代表推送的是本身的设备
-				d, err = entity.GetPluginDevice(cli.areaID, cli.pluginID, resp.Identity)
-				if err != nil {
-					logger.Errorf("ListenStateChange error:%s", err.Error())
-					return
-				}
-			}
-
-			var attr server.Attribute
-			_ = json.Unmarshal(resp.Attributes, &attr)
-			a := entity.Attribute{
-				Attribute:  attr,
-				InstanceID: int(resp.InstanceId),
-			}
-
-			em := event.NewEventMessage(event.AttributeChange, d.AreaID)
-			em.SetDeviceID(d.ID)
-			em.SetAttr(a)
-			event.GetServer().Notify(em)
-		}()
+		sd.PluginID = cli.pluginID
+		return sd
 	}
-	logger.Println("StateChangeFromPlugin exit")
+	return
 }
 
-func (c *client) SetAttributes(d entity.Device, data json.RawMessage) (result []byte, err error) {
+// Connect 连接设备
+func (c *client) Connect(ctx context.Context, identify Identify, authParams map[string]interface{}) (das thingmodel.ThingModel, err error) {
+
+	pc, err := c.get(identify.PluginID)
+	if err != nil {
+		return
+	}
+	return pc.Connect(ctx, identify.IID, authParams)
+}
+
+func (c *client) Disconnect(ctx context.Context, identify Identify, authParams map[string]interface{}) (err error) {
+	cli, err := c.get(identify.PluginID)
+	if err != nil {
+		return
+	}
+	err = cli.Disconnect(ctx, identify.IID, authParams)
+	if err != nil {
+		return
+	}
+
+	v, loaded := c.devicesCancel.LoadAndDelete(identify.IID)
+	if loaded {
+		if cancel, ok := v.(context.CancelFunc); ok {
+			cancel()
+		}
+	}
+	return nil
+}
+
+func (c *client) GetAttributes(ctx context.Context, identify Identify) (das thingmodel.ThingModel, err error) {
+	req := proto.GetInstancesReq{Iid: identify.IID}
+	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
+	defer cancel()
+
+	cli, err := c.get(identify.PluginID)
+	if err != nil {
+		return
+	}
+	resp, err := cli.protoClient.GetInstances(ctx, &req)
+	if err != nil {
+		return
+	}
+	// logger.Debugf("GetInstances resp: %#v\n", resp)
+	das = ParseAttrsResp(resp)
+	return
+}
+
+func (c *client) SetAttributes(ctx context.Context, pluginID string, areaID uint64, setReq sdk.SetRequest) (result []byte, err error) {
+	data, _ := json.Marshal(setReq)
 	req := proto.SetAttributesReq{
-		Identity: d.Identity,
-		Data:     data,
+		Data: data,
 	}
 	logger.Debug("set attributes: ", string(data))
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
 	defer cancel()
-	cli, err := c.get(d.PluginID)
+	cli, err := c.get(pluginID)
 	if err != nil {
 		return
 	}
@@ -234,15 +149,24 @@ func (c *client) SetAttributes(d entity.Device, data json.RawMessage) (result []
 	return
 }
 
-func (c *client) OTA(d entity.Device, firmwareURL string) (err error) {
+func (c *client) IsOnline(identify Identify) bool {
+	cli, err := c.get(identify.PluginID)
+	if err != nil {
+		logger.Warningf("plugin %s not found", identify.PluginID)
+		return false
+	}
+	return cli.IsOnline(identify.IID)
+}
+
+func (c *client) OTA(ctx context.Context, identify Identify, firmwareURL string) (err error) {
 	req := proto.OTAReq{
-		Identity:    d.Identity,
+		Iid:         identify.IID,
 		FirmwareUrl: firmwareURL,
 	}
-	logger.Debugf("ota: %s, firmware url: %s", d.Identity, firmwareURL)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*10)
+	logger.Debugf("ota: %s, firmware url: %s", identify.IID, firmwareURL)
+	ctx, cancel := context.WithTimeout(ctx, time.Minute*10)
 	defer cancel()
-	cli, err := c.get(d.PluginID)
+	cli, err := c.get(identify.PluginID)
 	if err != nil {
 		return
 	}
@@ -260,7 +184,7 @@ func (c *client) OTA(d entity.Device, firmwareURL string) (err error) {
 			}
 			return
 		}
-		logrus.Debug("ota response:", resp.Identity, resp.Step)
+		logger.Println("ota response:", resp.Iid, resp.Step)
 		if resp.Step >= 100 {
 			return nil
 		}
@@ -270,261 +194,115 @@ func (c *client) OTA(d entity.Device, firmwareURL string) (err error) {
 	}
 }
 
-// Connect 连接设备
-func (c *client) Connect(identity, pluginID string, authParams map[string]string) (das DeviceInstances, err error) {
-	req := proto.AuthReq{
-		Identity: identity,
-		Params:   authParams,
+func (c *client) get(domain string) (*pluginClient, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	cli, ok := c.clients[domain]
+	if ok {
+		return cli, nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*5) // 配对认证过程较长可能长达数分钟
-	defer cancel()
-
-	cli, err := c.get(pluginID)
-	if err != nil {
-		return
-	}
-	resp, err := cli.protoClient.Connect(ctx, &req)
-	if err != nil {
-		return
-	}
-	logger.Debugf("connect resp: %#v\n", resp)
-	das = parseAttrsResp(identity, resp)
-	return
+	return nil, NotExistErr
 }
 
-func parseAttrsResp(identity string, resp *proto.GetAttributesResp) DeviceInstances {
+func (c *client) Add(cli *pluginClient) {
 
-	var instances []Instance
-	for _, instance := range resp.Instances {
-		var attrs []Attribute
-		_ = json.Unmarshal(instance.Attributes, &attrs)
-		i := Instance{
-			Type:       instance.Type,
-			InstanceId: int(instance.InstanceId),
-			Attributes: attrs,
-		}
-		instances = append(instances, i)
-	}
-	return DeviceInstances{
-		Identity:   identity,
-		Instances:  instances,
-		OTASupport: resp.OtaSupport,
-	}
+	c.mu.Lock()
+	c.clients[cli.pluginID] = cli
+	c.mu.Unlock()
+	go cli.InitDevices()
+	go c.ListenStateChange(cli.pluginID)
 }
 
-func (c *client) GetAttributes(d entity.Device) (das DeviceInstances, err error) {
-	req := proto.GetAttributesReq{Identity: d.Identity}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-	defer cancel()
-
-	cli, err := c.get(d.PluginID)
-	if err != nil {
-		return
-	}
-	resp, err := cli.protoClient.GetAttributes(ctx, &req)
-	if err != nil {
-		return
-	}
-	logger.Debugf("GetAttributes resp: %#v\n", resp)
-	das = parseAttrsResp(d.Identity, resp)
-	return
-}
-
-func (c *client) IsOnline(d entity.Device) bool {
-	cli, err := c.get(d.PluginID)
-	if err != nil {
-		logger.Warningf("get plugin %s error: %s", d.PluginID, err)
-		return false
-	}
-	return cli.IsOnline(d.Identity)
-}
-
-func newClient(areaID uint64, plgID, key string, plgConf Plugin) (*pluginClient, error) {
-	cli, err := clientv3.NewFromURL(etcdURL)
-	if err != nil {
-		return nil, err
-	}
-	etcdResolver, err := resolver.NewBuilder(cli)
-	if err != nil {
-		return nil, err
-	}
-	conn, err := grpc.Dial(fmt.Sprintf("etcd:///%s", key), grpc.WithInsecure(), grpc.WithResolvers(etcdResolver))
-	if err != nil {
-		return nil, err
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	return &pluginClient{
-		areaID:      areaID,
-		pluginID:    plgID,
-		protoClient: proto.NewPluginClient(conn),
-		ctx:         ctx,
-		cancel:      cancel,
-		PluginConf:  plgConf,
-	}, nil
-}
-
-type pluginClient struct {
-	areaID      uint64
-	pluginID    string
-	protoClient proto.PluginClient // 请求插件服务的grpc客户端
-	cancel      context.CancelFunc
-	ctx         context.Context
-	PluginConf  Plugin
-
-	healthCheckDevice    sync.Map // 记录有存活检查的设备，防止重复发起存活检查
-	deviceLastOnlineTime sync.Map // 记录每个设备上次在线时间
-}
-
-func (pc *pluginClient) Stop() {
-	if pc.cancel != nil {
-		pc.cancel()
-	}
-}
-
-func (pc *pluginClient) DeviceDiscover(ctx context.Context, out chan<- DiscoverResponse) {
-
-	pdc, err := pc.protoClient.Discover(ctx, &proto.Empty{})
-	if err != nil {
-		logger.Warning(err)
-		return
-	}
-	var wg sync.WaitGroup
-	defer wg.Wait()
-	for {
-		select {
-		case <-pc.ctx.Done():
-			return
-		case <-ctx.Done():
-			return
-		default:
-			resp, err := pdc.Recv()
-			if err == io.EOF {
-				return
-			}
-			if err != nil {
-				logger.Error(err)
-				time.Sleep(time.Second)
-				continue
-			}
-			wg.Add(1)
-			go func(d *proto.Device) {
-				defer wg.Done()
-				// 设备是否在线
-				if !pc.IsOnline(d.Identity) {
-					return
-				}
-
-				device := DiscoverResponse{
-					Identity:     d.Identity,
-					Model:        d.Model,
-					Manufacturer: d.Manufacturer,
-					Name:         fmt.Sprintf("%s_%s", d.Manufacturer, d.Model),
-					PluginID:     pc.pluginID,
-					AuthRequired: d.AuthRequired,
-				}
-				select {
-				case out <- device:
-				default:
-				}
-			}(resp)
-
-		}
-	}
-}
-
-// IsOnline 设备是否在线
-// 根据缓存判断是否在线，不在线则同步发起请求
-func (pc *pluginClient) IsOnline(identity string) bool {
-	// 每个设备都开启一个goroutine持续判断是否在线，防止并发请求导致运行多个goroutine
-	_, loaded := pc.healthCheckDevice.LoadOrStore(identity, nil)
-	if !loaded {
-		go pc.healthChecking(identity)
-	}
-
-	// 在线则直接返回，不在线则阻塞等待到恢复在线或超时
-	if pc.isOnline(identity) {
-		return true
-	}
-
-	timeout := time.NewTimer(time.Second * 10)
-	defer timeout.Stop()
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-timeout.C:
-			return false
-		case <-ticker.C:
-			if err := pc.healthCheck(identity); err != nil {
-				logger.Errorf("%s health check err: %s", identity, err.Error())
-				return false
-			}
-			if pc.isOnline(identity) {
-				return true
-			}
-		}
-	}
-}
-
-func (pc *pluginClient) healthChecking(identity string) {
-	healthCheckTicker := time.NewTicker(healthCheckInterval)
-	for {
-		select {
-		case <-pc.ctx.Done():
-			logger.Debugf("%s health check done", identity)
-			return
-		case <-healthCheckTicker.C:
-			if err := pc.healthCheck(identity); err != nil {
-				logger.Errorf("%s health check err: %s", identity, err.Error())
-			}
-		}
-	}
-}
-
-// healthCheck 查看设备的在线状态
-func (pc *pluginClient) healthCheck(identity string) error {
-
-	req := proto.HealthCheckReq{Identity: identity}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
-	defer cancel()
-	resp, err := pc.protoClient.HealthCheck(ctx, &req)
-	if err != nil {
-		return err
-	}
-	if !pc.isOnline(identity) && resp.Online {
-		logger.Infof("%s %s back to online", pc.pluginID, identity)
-	}
-	if resp.Online {
-		pc.deviceLastOnlineTime.Store(identity, time.Now())
-	} else {
-		logger.Debugf("%s %s health check offline", pc.pluginID, identity)
+func (c *client) Remove(pluginID string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	cli, ok := c.clients[pluginID]
+	if ok {
+		delete(c.clients, pluginID)
+		go cli.Stop()
 	}
 	return nil
 }
 
-func (pc *pluginClient) isOnline(identity string) bool {
-	if v, ok := pc.deviceLastOnlineTime.Load(identity); ok {
-		lastOnlineTime := v.(time.Time)
-		return lastOnlineTime.Add(offlineTimeout).After(time.Now())
+func (c *client) ListenStateChange(pluginID string) {
+	cli, err := c.get(pluginID)
+	if err != nil {
+		return
 	}
-	return false
+	pdc, err := cli.protoClient.Subscribe(cli.ctx, &emptypb.Empty{})
+	if err != nil {
+		logger.Error("state onDeviceStateChange error:", err)
+		return
+	}
+	logger.Println("StateChange recv...")
+	for {
+		var resp *proto.Event
+		resp, err = pdc.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			logger.Println(err)
+			// TODO retry
+			break
+		}
+
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error(r)
+				}
+			}()
+			var ev sdk.Event
+			_ = json.Unmarshal(resp.Data, &ev)
+
+			if err = HandleEvent(cli, ev); err != nil {
+				logger.Errorf("handle event err:%s", err)
+			}
+		}()
+	}
+	logger.Println("StateChangeFromPlugin exit")
 }
 
-// GetPluginConfig 获取插件配置
-func GetPluginConfig(addr, pluginID string) (config Plugin, err error) {
-	url := fmt.Sprintf("http://%s/api/plugin/%s/config.json", addr, pluginID)
-	resp, err := http.Get(url)
-	if err != nil {
-		return
-	}
-	defer resp.Body.Close()
+func HandleEvent(cli *pluginClient, ev sdk.Event) (err error) {
+	switch ev.Type {
+	case "attr_change":
 
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return
-	}
-	if err = json.Unmarshal(data, &config); err != nil {
-		return
+		var d entity.Device
+		var attrEvent definer.AttributeEvent
+		_ = json.Unmarshal(ev.Data, &attrEvent)
+
+		d, err = entity.GetPluginDevice(cli.areaID, cli.pluginID, attrEvent.IID)
+		if err != nil {
+			logger.Errorf("GetPluginDevice error:%s", err.Error())
+			return
+		}
+
+		em := event2.NewEventMessage(event2.AttributeChange, cli.areaID)
+		em.SetDeviceID(d.ID)
+		em.SetAttr(attrEvent)
+		event2.Notify(em)
+	case "thing_model_change":
+		var tme definer.ThingModelEvent
+		_ = json.Unmarshal(ev.Data, &tme)
+		em := event2.NewEventMessage(event2.ThingModelChange, cli.areaID)
+		em.Param = map[string]interface{}{
+			"thing_model": tme.ThingModel,
+			"iid":         tme.IID,
+			"area_id":     cli.areaID,
+			"plugin_id":   cli.pluginID,
+		}
+		event2.Notify(em)
 	}
 	return
+}
+
+func ParseAttrsResp(resp *proto.GetInstancesResp) thingmodel.ThingModel {
+
+	var instances []thingmodel.Instance
+	_ = json.Unmarshal(resp.Instances, &instances)
+	return thingmodel.ThingModel{
+		Instances:  instances,
+		OTASupport: resp.OtaSupport,
+	}
 }

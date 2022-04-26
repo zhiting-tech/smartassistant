@@ -7,8 +7,8 @@ import (
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
-	"github.com/zhiting-tech/smartassistant/modules/utils/cache"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
+	"github.com/zhiting-tech/smartassistant/pkg/cache"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"github.com/zhiting-tech/smartassistant/pkg/rand"
 )
@@ -47,7 +47,10 @@ func GetVerificationCode(c *gin.Context) {
 
 	code := rand.StringK(codeLength, rand.KindAll)
 
-	cache.GetCache().Set(code, user.Token, codeExpireIn)
+	if err = cache.Set(code, user.Token, codeExpireIn); err != nil {
+		err = errors.New(errors.InternalServerErr)
+		return
+	}
 
 	resp.Code = code
 	resp.ExpireIn = int(codeExpireIn / time.Second)

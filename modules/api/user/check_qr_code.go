@@ -1,6 +1,7 @@
 package user
 
 import (
+	"github.com/zhiting-tech/smartassistant/modules/file"
 	"strconv"
 
 	"github.com/zhiting-tech/smartassistant/modules/api/area"
@@ -19,11 +20,11 @@ import (
 
 // checkQrCodeReq 扫描邀请二维码接口请求参数
 type checkQrCodeReq struct {
-	QrCode   string `json:"qr_code"`
-	Nickname string `json:"nickname"`
-	roleIds  []int
-	areaId   uint64
-	areaType entity.AreaType
+	QrCode        string `json:"qr_code"`
+	Nickname      string `json:"nickname"`
+	roleIds       []int
+	areaId        uint64
+	areaType      entity.AreaType
 	departmentIds []int
 }
 
@@ -99,7 +100,7 @@ func (req *checkQrCodeReq) validateRequest(c *gin.Context) (err error) {
 		if err != nil {
 			return
 		}
-		if departmentCount != int64(len(req.departmentIds)){
+		if departmentCount != int64(len(req.departmentIds)) {
 			err = errors.New(status.DepartmentNotExit)
 			return
 		}
@@ -134,9 +135,9 @@ func (req *checkQrCodeReq) checkQrCode(c *gin.Context) (resp CheckQrCodeResp, er
 	u := session.GetUserByToken(c)
 
 	var (
-		uRoles []entity.UserRole
+		uRoles       []entity.UserRole
 		uDepartments []entity.DepartmentUser
-		currentArea entity.Area
+		currentArea  entity.Area
 	)
 
 	if currentArea, err = entity.GetAreaByID(req.areaId); err != nil {
@@ -186,13 +187,14 @@ func (req *checkQrCodeReq) checkQrCode(c *gin.Context) (resp CheckQrCodeResp, er
 			return
 		}
 	}
-
+	imgUrl, _ := file.GetFileUrl(c, user.AvatarID)
 	resp.UserInfo = entity.UserInfo{
 		UserId:        user.ID,
 		AccountName:   user.AccountName,
 		Nickname:      user.Nickname,
 		IsSetPassword: user.Password != "",
 		Phone:         user.Phone,
+		AvatarUrl:     imgUrl,
 	}
 
 	if u != nil {

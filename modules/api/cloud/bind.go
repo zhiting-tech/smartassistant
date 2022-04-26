@@ -9,7 +9,6 @@ import (
 
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/cloud"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
-	"github.com/zhiting-tech/smartassistant/modules/config"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
@@ -46,16 +45,8 @@ func bindCloud(c *gin.Context) {
 		return
 	}
 
-	// 建立长连接
-	saID := config.GetConf().SmartAssistant.ID
-	scUrl := config.GetConf().SmartCloud.URL()
-	if err != nil {
-		err = errors.New(errors.BadRequest)
-		return
-	}
-
 	// 更新用户和家庭关系
-	url := fmt.Sprintf("%s/sa/%s/users/%d", scUrl, saID, req.CloudUserID)
+	path := fmt.Sprintf("users/%d", req.CloudUserID)
 	u := session.Get(c)
 	body := map[string]interface{}{
 		"access_token": req.AccessToken,
@@ -82,7 +73,7 @@ func bindCloud(c *gin.Context) {
 		body["area_token"] = setting2.GetAreaAuthToken(u.AreaID)
 	}
 
-	_, err = cloud.DoWithContext(c.Request.Context(), url, http.MethodPost, body)
+	_, err = cloud.DoWithContext(c.Request.Context(), path, http.MethodPost, body)
 	if err != nil {
 		err = errors.New(status.SABindError)
 		return

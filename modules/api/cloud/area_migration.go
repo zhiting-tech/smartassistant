@@ -2,6 +2,7 @@ package cloud
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	errors2 "errors"
@@ -22,6 +23,7 @@ import (
 	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/pkg/archive"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
+	"github.com/zhiting-tech/smartassistant/pkg/http/httpclient"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
 	"gorm.io/gorm"
 )
@@ -46,7 +48,7 @@ type AreaMigrationReq struct {
 	SADevice     entity.Device `json:"-"`
 }
 
-func (req *AreaMigrationReq) ReBind(areaID uint64) (err error) {
+func (req *AreaMigrationReq) ReBindWithContext(ctx context.Context, areaID uint64) (err error) {
 	var (
 		content []byte
 		httpReq *http.Request
@@ -74,13 +76,11 @@ func (req *AreaMigrationReq) ReBind(areaID uint64) (err error) {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
-	httpReq, err = http.NewRequest(http.MethodPost, req.MigrationUrl, bytes.NewBuffer(content))
+	httpReq, err = http.NewRequestWithContext(ctx, http.MethodPost, req.MigrationUrl, bytes.NewBuffer(content))
 	if err != nil {
 		return
 	}
-	client := &http.Client{Timeout: HttpRequestTimeout, Transport: tr}
-	// ctx, _ := context.WithTimeout(context.Background(), HttpRequestTimeout)
-	// httpReq.WithContext(ctx)
+	client := httpclient.NewHttpClient(httpclient.WithTimeout(HttpRequestTimeout), httpclient.WithTransport(tr))
 	httpResp, err := client.Do(httpReq)
 	if err != nil {
 		return
@@ -93,7 +93,7 @@ func (req *AreaMigrationReq) ReBind(areaID uint64) (err error) {
 	return
 }
 
-func (req *AreaMigrationReq) GetBackupFile() (file string, err error) {
+func (req *AreaMigrationReq) GetBackupFileWithContext(ctx context.Context) (file string, err error) {
 	var (
 		content    []byte
 		httpReq    *http.Request
@@ -112,13 +112,11 @@ func (req *AreaMigrationReq) GetBackupFile() (file string, err error) {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
-	httpReq, err = http.NewRequest(http.MethodPost, req.MigrationUrl, bytes.NewBuffer(content))
+	httpReq, err = http.NewRequestWithContext(ctx, http.MethodPost, req.MigrationUrl, bytes.NewBuffer(content))
 	if err != nil {
 		return
 	}
-	client := &http.Client{Timeout: HttpRequestTimeout, Transport: tr}
-	// ctx, _ := context.WithTimeout(context.Background(), HttpRequestTimeout)
-	// httpReq.WithContext(ctx)
+	client := httpclient.NewHttpClient(httpclient.WithTimeout(HttpRequestTimeout), httpclient.WithTransport(tr))
 	httpResp, err := client.Do(httpReq)
 	if err != nil {
 		return
@@ -154,14 +152,14 @@ func (req *AreaMigrationReq) GetBackupFile() (file string, err error) {
 	return
 }
 
-func (req *AreaMigrationReq) ProcessCloudToLocal() (err error) {
+func (req *AreaMigrationReq) ProcessCloudToLocalWithContext(ctx context.Context) (err error) {
 
 	var (
 		dir  string
 		file string
 	)
 
-	file, err = req.GetBackupFile()
+	file, err = req.GetBackupFileWithContext(ctx)
 	if err != nil {
 		err = errors.Wrap(err, errors.InternalServerErr)
 		return
@@ -205,7 +203,7 @@ func (req *AreaMigrationReq) ProcessCloudToLocal() (err error) {
 			return err
 		}
 
-		err = req.ReBind(sa.AreaID)
+		err = req.ReBindWithContext(ctx, sa.AreaID)
 		if err != nil {
 			return err
 		}
@@ -288,6 +286,19 @@ func restoreCloudAreaDBData(db *gorm.DB, tx *gorm.DB) (err error) {
 		return err
 	}
 
+	var clients []entity.Client
+	// 查出云端的client
+	if err = db.Where("area_id=?", area.ID).Find(&clients).Error; err != nil {
+		return
+	}
+
+	// 云端client迁移至本地
+	for _, client := range clients {
+		if err = tx.Model(entity.Client{}).Create(&client).Error; err != nil {
+			return
+		}
+	}
+
 	// 遍历迁移剩余的表
 	excludeTables := map[string]interface{}{
 		getTableFullName(entity.Device{}): entity.Device{},
@@ -332,8 +343,8 @@ func backupDatabase() {
 
 func AreaMigration(c *gin.Context) {
 	var (
-		req AreaMigrationReq
-		err error
+		req      AreaMigrationReq
+		err      error
 		saDevice entity.Device
 	)
 	defer func() {
@@ -347,16 +358,36 @@ func AreaMigration(c *gin.Context) {
 	}
 
 	backupDatabase()
-	err = req.ProcessCloudToLocal()
+	err = req.ProcessCloudToLocalWithContext(c.Request.Context())
 	if err == nil {
 		if saDevice, err = entity.GetSaDevice(); err != nil {
 			return
 		}
 		err = SetAreaSynced(saDevice.AreaID)
+	} else {
+
+		// 迁移失败，回滚数据，需要删除添加设备后创建的家庭和SA
+		// 不删除会导致无法再次添加SA
+
+		var (
+			nerr  error
+			areas []entity.Area
+		)
+		if areas, nerr = entity.GetAreas(); nerr != nil {
+			logger.Warnf("area migration rollback, get areas error %v", nerr)
+			return
+		}
+
+		// 删除家庭，删除家庭会将家庭的所有设备删除
+
+		for _, area := range areas {
+			if nerr = entity.DelAreaByID(area.ID); nerr != nil {
+				logger.Warnf("area migration rollback, del area %d error %v", area.ID, nerr)
+			}
+		}
 	}
 
 }
-
 
 // SetAreaSynced 设置是否绑定云端
 func SetAreaSynced(areaID uint64) (err error) {
