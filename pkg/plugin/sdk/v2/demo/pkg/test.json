@@ -1,0 +1,88 @@
+{
+  "instances": [
+    {
+      "iid": "id111",
+      "services": [
+        {
+          "type": "gateway",
+          "attributes": [
+            {
+              "aid": 1,
+              "type": "on_off",
+              "val_type": "",
+              "permission": 0,
+              "val": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "iid": "id222",
+      "services": [
+        {
+          "type": "light",
+          "attributes": [
+            {
+              "aid": 1,
+              "type": "on_off",
+              "val_type": "",
+              "permission": 0,
+              "val": null
+            },
+            {
+              "aid": 2,
+              "type": "brightness",
+              "val_type": "",
+              "min": 1,
+              "max": 100,
+              "permission": 0,
+              "val": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "iid": "id333",
+      "services": [
+        {
+          "type": "switch",
+          "attributes": [
+            {
+              "aid": 1,
+              "type": "on_off",
+              "val_type": "",
+              "permission": 0,
+              "val": null
+            }
+          ]
+        },
+        {
+          "type": "switch",
+          "attributes": [
+            {
+              "aid": 2,
+              "type": "on_off",
+              "val_type": "",
+              "permission": 0,
+              "val": null
+            }
+          ]
+        },
+        {
+          "type": "switch",
+          "attributes": [
+            {
+              "aid": 3,
+              "type": "on_off",
+              "val_type": "",
+              "permission": 0,
+              "val": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -15,6 +15,8 @@ const (
 	ForbiddenBindOtherSA
 	ForbiddenRemoveSADevice
 	DeviceTypeNotExist
+	DeviceLogoNotExist
+	AddDeviceFail
 )
 
 func init() {
@@ -29,4 +31,6 @@ func init() {
 	errors.NewCode(ForbiddenBindOtherSA, "已有SA，不允许添加其他SA")
 	errors.NewCode(ForbiddenRemoveSADevice, "不允许删除SA设备")
 	errors.NewCode(DeviceTypeNotExist, "设备类型不存在")
+	errors.NewCode(DeviceLogoNotExist, "设备图标不存在")
+	errors.NewCode(AddDeviceFail, "添加设备失败")
 }

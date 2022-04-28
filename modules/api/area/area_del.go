@@ -1,14 +1,16 @@
 package area
 
 import (
+	"strconv"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/extension"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/clouddisk"
 	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
@@ -21,9 +23,9 @@ type DelAreaReq struct {
 // DelArea 用于处理删除家庭接口的请求
 func DelArea(c *gin.Context) {
 	var (
-		id  uint64
-		err error
-		req DelAreaReq
+		id   uint64
+		err  error
+		req  DelAreaReq
 		resp clouddisk.DelAreaStatus
 	)
 	defer func() {
@@ -56,9 +58,9 @@ func DelArea(c *gin.Context) {
 	return
 }
 
-func ProcessDelArea(c *gin.Context, areaID uint64, isDelCloudDiskFile bool) (resp clouddisk.DelAreaStatus, err error){
-	if !extension.HasExtension(types.CloudDisk) {
-		err = clouddisk.DelArea(areaID)
+func ProcessDelArea(c *gin.Context, areaID uint64, isDelCloudDiskFile bool) (resp clouddisk.DelAreaStatus, err error) {
+	if !extension.HasExtensionWithContext(c.Request.Context(), types.CloudDisk) {
+		err = clouddisk.DelAreaWithContext(c.Request.Context(), areaID)
 		resp.RemoveStatus = clouddisk.CloudDiskDelSuccess
 		return
 	}

@@ -8,12 +8,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zhiting-tech/smartassistant/modules/entity"
+	"github.com/zhiting-tech/smartassistant/modules/types"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/zhiting-tech/smartassistant/modules/cloud"
 	"github.com/zhiting-tech/smartassistant/modules/config"
 	"github.com/zhiting-tech/smartassistant/modules/plugin"
 	"github.com/zhiting-tech/smartassistant/modules/plugin/docker"
 	"github.com/zhiting-tech/smartassistant/modules/supervisor/proto"
-	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	errors2 "github.com/zhiting-tech/smartassistant/pkg/errors"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
@@ -96,7 +99,7 @@ func stopAllPlugins() (err error) {
 			_, _ = plugin.RunPlugin(plg)
 		}
 	}
-	plgs, err := plugin.GetGlobalManager().LoadPlugins()
+	plgs, err := plugin.GetGlobalManager().LoadPluginsWithContext(context.TODO())
 	cli := docker.GetClient()
 	if err != nil {
 		return
@@ -120,7 +123,7 @@ func stopAllPlugins() (err error) {
 }
 
 func startAllPlugins() (err error) {
-	plgs, err := plugin.GetGlobalManager().LoadPlugins()
+	plgs, err := plugin.GetGlobalManager().LoadPluginsWithContext(context.TODO())
 	if err != nil {
 		return
 	}
@@ -148,7 +151,7 @@ func (m *Manager) processRestart(cn string) (err error) {
 }
 
 // StartBackupJob 停止所有插件,通知supervisor备份
-func (m *Manager) StartBackupJob(note string) (err error) {
+func (m *Manager) StartBackupJobWithContext(ctx context.Context, req entity.BackupInfo) (err error) {
 	err = stopAllPlugins()
 	if err != nil {
 		return
@@ -161,10 +164,10 @@ func (m *Manager) StartBackupJob(note string) (err error) {
 			}
 		}
 	}()
-
+	newCtx := trace.ContextWithSpan(context.Background(), trace.SpanFromContext(ctx))
 	go func() {
 		time.Sleep(time.Second)
-		err = GetClient().BackupSmartassistant(note)
+		err = GetClient().BackupSmartassistantWithContext(newCtx, req)
 		if err != nil {
 			logger.Errorf("backup error %v", err)
 		}
@@ -174,7 +177,7 @@ func (m *Manager) StartBackupJob(note string) (err error) {
 }
 
 // StartRestoreJob 停止所有插件,通知supervisor还原数据
-func (m *Manager) StartRestoreJob(file string) (err error) {
+func (m *Manager) StartRestoreJobWithContext(ctx context.Context, file string) (err error) {
 	err = stopAllPlugins()
 	if err != nil {
 		return
@@ -187,10 +190,10 @@ func (m *Manager) StartRestoreJob(file string) (err error) {
 			}
 		}
 	}()
-
+	newCtx := trace.ContextWithSpan(context.Background(), trace.SpanFromContext(ctx))
 	go func() {
 		time.Sleep(time.Second)
-		err = GetClient().RestoreSmartassistant(file)
+		err = GetClient().RestoreSmartassistantWithContext(newCtx, file)
 		if err != nil {
 			logger.Errorf("restore error %v", err)
 		}
@@ -215,12 +218,12 @@ func (m *Manager) DeleteBackup(fn string) error {
 }
 
 // StartUpdateJob 下载新版镜像，通知supervisor以新镜像重启
-func (m *Manager) StartUpdateJob(version string) (err error) {
+func (m *Manager) StartUpdateJobWithContext(ctx context.Context, version string) (err error) {
 	var (
 		result *cloud.SoftwareLastVersionHttpResult
 		req    proto.UpdateReq
 	)
-	if result, err = cloud.GetLastSoftwareVersion(); err != nil {
+	if result, err = cloud.GetLastSoftwareVersionWithContext(ctx); err != nil {
 		return
 	}
 
@@ -250,9 +253,11 @@ func (m *Manager) StartUpdateJob(version string) (err error) {
 			}
 		}
 	}()
+
+	newCtx := trace.ContextWithSpan(context.Background(), trace.SpanFromContext(ctx))
 	go func() {
 		time.Sleep(time.Second)
-		err = GetClient().Update(&req)
+		err = GetClient().UpdateWithContext(newCtx, &req)
 		if err != nil {
 			logger.Errorf("restart error %v", err)
 		}

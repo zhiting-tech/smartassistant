@@ -100,9 +100,9 @@ func UpdateLocation(id int, updateLocation Location) (err error) {
 	err = GetDB().First(location).Updates(updateLocation).Error
 	if err != nil {
 		if errors2.Is(err, gorm.ErrRecordNotFound) {
-			err = errors.New(status.LocationNotExit)
+			err = errors.Wrap(err, status.LocationNotExit)
 		} else {
-			err = errors.New(errors.InternalServerErr)
+			err = errors.Wrap(err, errors.InternalServerErr)
 		}
 	}
 	return

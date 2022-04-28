@@ -9,6 +9,15 @@ const (
 	SoftwareUpgrade = "software_upgrade" // 软件升级
 )
 
+const (
+	ActionAdd     = "add"
+	ActionGet     = "get"
+	ActionUpdate  = "update"
+	ActionControl = "control"
+	ActionDelete  = "delete"
+	ActionManage  = "manage"
+)
+
 type Permission struct {
 	Name      string `json:"name"`
 	Action    string `json:"action"`    // 动作
@@ -18,46 +27,46 @@ type Permission struct {
 
 var (
 	// 设备
-	DeviceAdd     = Permission{"添加设备", "add", "device", ""}
-	DeviceUpdate  = Permission{"修改设备", "update", "device", ""}
-	DeviceControl = Permission{"控制设备", "control", "device", ""}
-	DeviceDelete  = Permission{"删除设备", "delete", "device", ""}
-	DeviceManage  = Permission{"管理设备", "manage", "device", ""}
+	DeviceAdd     = Permission{"添加设备", ActionAdd, "device", ""}
+	DeviceUpdate  = Permission{"修改设备", ActionUpdate, "device", ""}
+	DeviceControl = Permission{"控制设备", ActionControl, "device", ""}
+	DeviceDelete  = Permission{"删除设备", ActionDelete, "device", ""}
+	DeviceManage  = Permission{"管理设备", ActionManage, "device", ""}
 	// 家庭/公司
-	AreaGetCode          	 = Permission{"生成邀请码", "get", "area", "invite_code"}
-	AreaUpdateName         	 = Permission{"修改家庭名称", "update", "area", "name"}
-	AreaUpdateMemberRole     = Permission{"修改成员角色", "update", "area", "member_role"}
-	AreaDelMember        	 = Permission{"删除成员", "delete", "area", "member"}
+	AreaGetCode          = Permission{"生成邀请码", ActionGet, "area", "invite_code"}
+	AreaUpdateName       = Permission{"修改家庭名称", ActionUpdate, "area", "name"}
+	AreaUpdateMemberRole = Permission{"修改成员角色", ActionUpdate, "area", "member_role"}
+	AreaDelMember        = Permission{"删除成员", ActionDelete, "area", "member"}
 	// 公司
-	AreaUpdateMemberDepartment = Permission{"修改成员部门", "update", "area", "member_department"}
-	AreaUpdateCompanyName = Permission{"修改公司名称", "update", "area", "company_name"}
+	AreaUpdateMemberDepartment = Permission{"修改成员部门", ActionUpdate, "area", "member_department"}
+	AreaUpdateCompanyName      = Permission{"修改公司名称", ActionUpdate, "area", "company_name"}
 
 	// 房间/区域
-	LocationAdd         = Permission{"添加房间/区域", "add", "location", ""}
-	LocationUpdateOrder = Permission{"调整顺序", "update", "location", "order"}
-	LocationUpdateName  = Permission{"修改房间名称", "update", "location", "name"}
-	LocationGet         = Permission{"查看房间详情", "get", "location", ""}
-	LocationDel         = Permission{"删除房间", "delete", "location", ""}
+	LocationAdd         = Permission{"添加房间/区域", ActionAdd, "location", ""}
+	LocationUpdateOrder = Permission{"调整顺序", ActionUpdate, "location", "order"}
+	LocationUpdateName  = Permission{"修改房间名称", ActionUpdate, "location", "name"}
+	LocationGet         = Permission{"查看房间详情", ActionGet, "location", ""}
+	LocationDel         = Permission{"删除房间", ActionDelete, "location", ""}
 	// 角色
-	RoleGet    = Permission{"查看角色列表", "get", "role", ""}
-	RoleAdd    = Permission{"新增角色", "add", "role", ""}
-	RoleUpdate = Permission{"编辑角色", "update", "role", ""}
-	RoleDel    = Permission{"删除角色", "delete", "role", ""}
+	RoleGet    = Permission{"查看角色列表", ActionGet, "role", ""}
+	RoleAdd    = Permission{"新增角色", ActionAdd, "role", ""}
+	RoleUpdate = Permission{"编辑角色", ActionUpdate, "role", ""}
+	RoleDel    = Permission{"删除角色", ActionDelete, "role", ""}
 
 	// 场景
-	SceneAdd     = Permission{"新增场景", "add", "scene", ""}
-	SceneUpdate  = Permission{"修改场景", "update", "scene", ""}
-	SceneDel     = Permission{"删除场景", "delete", "scene", ""}
-	SceneControl = Permission{"控制场景", "control", "scene", ""}
+	SceneAdd     = Permission{"新增场景", ActionAdd, "scene", ""}
+	SceneUpdate  = Permission{"修改场景", ActionUpdate, "scene", ""}
+	SceneDel     = Permission{"删除场景", ActionDelete, "scene", ""}
+	SceneControl = Permission{"控制场景", ActionControl, "scene", ""}
 
 	// 部门
-	DepartmentAdd 		   = Permission{"添加部门", "add", "department", ""}
-	DepartmentUpdateOrder  = Permission{"调整部门顺序", "update", "department", "order"}
-	DepartmentGet  		   = Permission{"查看部门详情", "get", "department", ""}
-	DepartmentAddUser  	   = Permission{"添加成员", "add", "department", "user"}
-	DepartmentUpdate  	   = Permission{"部门设置", "update", "department", ""}
+	DepartmentAdd         = Permission{"添加部门", ActionAdd, "department", ""}
+	DepartmentUpdateOrder = Permission{"调整部门顺序", ActionUpdate, "department", "order"}
+	DepartmentGet         = Permission{"查看部门详情", ActionGet, "department", ""}
+	DepartmentAddUser     = Permission{"添加成员", ActionAdd, "department", "user"}
+	DepartmentUpdate      = Permission{"部门设置", ActionUpdate, "department", ""}
 
-	DevicePermission     = []Permission{DeviceAdd, DeviceUpdate, DeviceControl, DeviceDelete, DeviceManage}
+	DevicePermission     = []Permission{DeviceAdd, DeviceUpdate, DeviceControl, DeviceDelete}
 	AreaPermission       = []Permission{AreaGetCode, AreaUpdateName, AreaUpdateMemberRole, AreaDelMember}
 	LocationPermission   = []Permission{LocationAdd, LocationUpdateOrder, LocationUpdateName, LocationGet, LocationDel}
 	RolePermission       = []Permission{RoleGet, RoleAdd, RoleUpdate, RoleDel}
@@ -77,16 +86,16 @@ func DeviceTarget(deviceID int) string {
 
 func NewDeviceDelete(deviceID int) Permission {
 	target := DeviceTarget(deviceID)
-	return Permission{"删除设备", "delete", target, ""}
+	return Permission{"删除设备", ActionDelete, target, ""}
 }
 func NewDeviceUpdate(deviceID int) Permission {
 	target := DeviceTarget(deviceID)
-	return Permission{"修改设备", "update", target, ""}
+	return Permission{"修改设备", ActionUpdate, target, ""}
 }
 
 func NewDeviceManage(deviceID int, name string, attr string) Permission {
 	target := DeviceTarget(deviceID)
-	return Permission{name, "manage", target, attr}
+	return Permission{name, ActionManage, target, attr}
 }
 
 func init() {

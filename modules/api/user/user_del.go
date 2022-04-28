@@ -1,9 +1,10 @@
 package user
 
 import (
+	"strconv"
+
 	"github.com/zhiting-tech/smartassistant/modules/extension"
 	pb "github.com/zhiting-tech/smartassistant/pkg/extension/proto"
-	"strconv"
 
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/cloud"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
@@ -54,10 +55,12 @@ func DelUser(c *gin.Context) {
 		return
 	}
 
+	// 删除smb数据成功，再删除用户
 	if err = entity.DelUser(userID); err != nil {
-		err = errors.Wrap(err, errors.InternalServerErr)
+		return
 	}
-	cloud.RemoveSAUser(sessionUser.AreaID, userID)
+
+	cloud.RemoveSAUserWithContext(c.Request.Context(), sessionUser.AreaID, userID)
 	extension.GetExtensionServer().Notify(pb.SAEvent_del_user_ev, map[string]interface{}{
 		"ids": []int{userID},
 	})

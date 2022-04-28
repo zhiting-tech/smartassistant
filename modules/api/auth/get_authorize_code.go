@@ -1,17 +1,18 @@
 package auth
 
 import (
+	"strconv"
+	"strings"
+
 	"github.com/gin-gonic/gin"
+	"gopkg.in/oauth2.v3"
+	"gopkg.in/oauth2.v3/server"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
-	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
-	"gopkg.in/oauth2.v3"
-	"gopkg.in/oauth2.v3/server"
-	"strconv"
-	"strings"
 )
 
 type GetAuthorizeCodeReq struct {
@@ -19,7 +20,6 @@ type GetAuthorizeCodeReq struct {
 	ResponseType string   `json:"response_type"` // 此处应固定填写为code
 	State        string   `json:"state"`         // 第三方指定任意值
 	Scopes       []string `json:"scope"`         // 获取的权限，可选
-	AccessToken  string   `json:"access_token"`  // access_token
 }
 
 type GetAuthorizeCodeResp struct {
@@ -50,10 +50,6 @@ func GetAuthorizeCode(c *gin.Context) {
 		UserID:       strconv.Itoa(userInfo.UserID),
 		Request:      c.Request,
 	}
-
-	authReq.Request.Header.Set(types.UserKey, userInfo.Token)
-	authReq.Request.Header.Set(types.AreaID, strconv.FormatUint(userInfo.AreaID, 10))
-
 	ti, err := oauth.GetOauthServer().GetAuthorizeToken(authReq)
 	if err != nil {
 		logger.Error("get authorize code err: %v", err)

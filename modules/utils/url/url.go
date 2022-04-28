@@ -46,7 +46,7 @@ func Join(v url.Values) string {
 }
 
 // BuildURL 根据请求和相对路径转换成地址
-func BuildURL(path string, query map[string]interface{}, req *http.Request) string {
+func BuildURL(path string, query map[string]interface{}, req *http.Request) *url.URL {
 	values := BuildQuery(query)
 	u := url.URL{
 		Host:     req.Host,
@@ -60,11 +60,7 @@ func BuildURL(path string, query map[string]interface{}, req *http.Request) stri
 			u.Scheme = "http"
 		}
 	}
-	return u.String()
-}
-
-func StaticPath() string {
-	return ConcatPath("api", "static", config.GetConf().SmartAssistant.ID)
+	return &u
 }
 
 // ConcatPath 拼接路径
@@ -72,8 +68,33 @@ func ConcatPath(paths ...string) string {
 	return strings.Join(paths, "/")
 }
 
+// BackendStaticPath 后端静态文件路径
+func BackendStaticPath() string {
+	return ConcatPath("backend", "static",
+		config.GetConf().SmartAssistant.ID, "sa")
+}
+
+// ImagePath 图片相对路径
+func ImagePath(imgName string) string {
+	return ConcatPath(BackendStaticPath(), "img", imgName)
+}
+
+// ImageUrl 静态文件夹图片地址
+func ImageUrl(req *http.Request, imgName string) string {
+	return BuildURL(ImagePath(imgName), nil, req).String()
+}
+
 // SAImageUrl SA的Logo地址
 func SAImageUrl(req *http.Request) string {
-	path := ConcatPath(StaticPath(), "sa", "img", "智慧中心.png")
-	return BuildURL(path, nil, req)
+	return ImageUrl(req, "智慧中心.png")
+}
+
+func FilePath() string {
+	return ConcatPath("file", config.GetConf().SmartAssistant.ID, "sa")
+}
+
+// FileUrl 用户上传的文件路径
+func FileUrl(req *http.Request, fileName string) string {
+	path := ConcatPath(FilePath(), fileName)
+	return BuildURL(path, nil, req).String()
 }

@@ -2,20 +2,18 @@ package entity
 
 import (
 	"errors"
-
-	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/server"
 )
 
 type State struct {
 	// Desired 期望值
-	Desired map[int]map[string]interface{} `json:"desired"`
+	Desired map[string]map[int]interface{} `json:"desired"`
 	// Reported 报告值
-	Reported map[int]map[string]interface{} `json:"reported"`
+	Reported map[string]map[int]interface{} `json:"reported"`
 }
 
 type Metadata struct {
-	Desired  map[int]map[string]AttrMetadata `json:"desired"`
-	Reported map[int]map[string]AttrMetadata `json:"reported"`
+	Desired  map[string]map[int]AttrMetadata `json:"desired"`
+	Reported map[string]map[int]AttrMetadata `json:"reported"`
 }
 
 type AttrMetadata struct {
@@ -33,30 +31,30 @@ type Shadow struct {
 func NewShadow() Shadow {
 	return Shadow{
 		State: State{
-			Desired:  make(map[int]map[string]interface{}),
-			Reported: make(map[int]map[string]interface{}),
+			Desired:  make(map[string]map[int]interface{}),
+			Reported: make(map[string]map[int]interface{}),
 		},
 		Metadata: Metadata{
-			Desired:  make(map[int]map[string]AttrMetadata),
-			Reported: make(map[int]map[string]AttrMetadata),
+			Desired:  make(map[string]map[int]AttrMetadata),
+			Reported: make(map[string]map[int]AttrMetadata),
 		},
 	}
 }
 
-func (s *Shadow) UpdateReported(instanceID int, attr server.Attribute) {
+func (s *Shadow) UpdateReported(iid string, aid int, val interface{}) {
 
-	if ins, ok := s.State.Reported[instanceID]; ok {
-		ins[attr.Attribute] = attr.Val
+	if ins, ok := s.State.Reported[iid]; ok {
+		ins[aid] = val
 	} else {
-		s.State.Reported[instanceID] = map[string]interface{}{attr.Attribute: attr.Val}
+		s.State.Reported[iid] = map[int]interface{}{aid: val}
 	}
 }
 
-func (s Shadow) reportedAttr(instanceID int, attribute string) (val interface{}, err error) {
-	if ins, ok := s.State.Reported[instanceID]; ok {
+func (s Shadow) reportedAttr(iid string, aid int) (val interface{}, err error) {
+	if ins, ok := s.State.Reported[iid]; ok {
 
-		if attr, ok := ins[attribute]; ok {
-			return attr, nil
+		if val, ok = ins[aid]; ok {
+			return val, nil
 		}
 	}
 	err = errors.New("attr not found in shadow")
@@ -64,6 +62,6 @@ func (s Shadow) reportedAttr(instanceID int, attribute string) (val interface{},
 
 }
 
-func (s Shadow) Get(instanceID int, attribute string) (val interface{}, err error) {
-	return s.reportedAttr(instanceID, attribute)
+func (s Shadow) Get(iid string, aid int) (val interface{}, err error) {
+	return s.reportedAttr(iid, aid)
 }

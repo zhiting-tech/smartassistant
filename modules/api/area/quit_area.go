@@ -1,9 +1,10 @@
 package area
 
 import (
+	"strconv"
+
 	"github.com/zhiting-tech/smartassistant/modules/extension"
 	pb "github.com/zhiting-tech/smartassistant/pkg/extension/proto"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/cloud"
@@ -21,7 +22,7 @@ func QuitArea(c *gin.Context) {
 		sessionUser *session.User
 		userID      int
 		areaID      uint64
-		area 		entity.Area
+		area        entity.Area
 	)
 
 	defer func() {
@@ -66,7 +67,7 @@ func QuitArea(c *gin.Context) {
 		err = errors.Wrap(err, errors.InternalServerErr)
 		return
 	}
-	cloud.RemoveSAUser(areaID, userID)
+	cloud.RemoveSAUserWithContext(c.Request.Context(), areaID, userID)
 	return
 
 }

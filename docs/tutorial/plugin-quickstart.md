@@ -12,174 +12,215 @@
     go get github.com/zhiting-tech/smartassistant
 ```
 
-2) 定义设备
+2) 定义协议
 
 ```go
 package plugin
 
 import (
-	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/attribute"
-	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/instance"
-	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/server"
+	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2"
+	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2/definer"
+	"github.com/zhiting-tech/smartassistant/pkg/thingmodel"
 )
 
-type Device struct {
-	Light instance.LightBulb
-	Info0 instance.Info
-	// 根据实际设备功能组合定义
-}
-
-func NewDevice() *Device {
-	// 定义属性
-	lightBulb := instance.LightBulb{
-		Power:     attribute.NewPower(),
-		ColorTemp: attribute.NewColorTemp(), // 根据需要初始化可选字段
-	}
-
-	info := instance.Info{
-		Identity:     attribute.NewIdentity(),
-		Model:        attribute.NewModel(),
-		Manufacturer: attribute.NewManufacturer(),
-		Version:      attribute.NewVersion(),
-	}
-	return &Device{
-		Light: lightBulb,
-		Info0: info,
-	}
-}
-```
-
-3) 实现设备接口
-
-```go
-
-package plugin
-
-import (
-	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/attribute"
-	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/instance"
-	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/server"
-)
-
-type Device struct {
-	LightBulb instance.LightBulb
-	Info0     instance.Info
-	// 根据实际设备功能组合定义
-	identity string
-	ch       server.WatchChan
-}
-
-func NewDevice(identity string) *Device {
-	// 定义设备属性
-	lightBulb := instance.LightBulb{
-		Power:      attribute.NewPower(),
-		ColorTemp:  instance.NewColorTemp(),
-		Brightness: instance.NewBrightness(),
-	}
-
-	// 定义设备基础属性
-	info := instance.Info{
-		Name:         attribute.NewName(),
-		Identity:     attribute.NewIdentity(),
-		Model:        attribute.NewModel(),
-		Manufacturer: attribute.NewManufacturer(),
-		Version:      attribute.NewVersion(),
-	}
-	return &Device{
-		LightBulb: lightBulb,
-		Info0:     info,
-		identity:  identity,
-		ch:        make(chan server.Notification, 5),
-	}
-}
-
-func (d *Device) Info() server.DeviceInfo {
-	// 该方法返回设备的主要信息
-	return d.identity
-}
-
-func (d *Device) update(attr string) attribute.UpdateFunc {
-	return func(val interface{}) error {
-		switch attr {
-		case "power":
-			d.LightBulb.Power.SetString(val.(string))
-		case "brightness":
-			d.LightBulb.Brightness.SetInt(val.(int))
-		case "color_temp":
-			d.LightBulb.ColorTemp.SetInt(val.(int))
-		}
-
-		n := server.Notification{
-			Identity:   d.identity,
-			InstanceID: 1,
-			Attr:       attr,
-			Val:        val,
-		}
-		select {
-		case d.ch <- n:
-		default:
-		}
-
-		return nil
-	}
-}
-
-func (d *Device) Setup() error {
-	// 设置设备的属性和相关配置（比如设备id、型号、厂商等，以及设备的属性更新触发函数）
-	d.Info0.Identity.SetString("123456")
-	d.Info0.Model.SetString("model")
-	d.Info0.Manufacturer.SetString("manufacturer")
-
-	d.LightBulb.Brightness.SetRange(1, 100)
-	d.LightBulb.ColorTemp.SetRange(1000, 5000)
+// 定义描述协议的结构
+type ProtocolDevice struct {
+	light *definer.BaseService
+	info *definer.BaseService
 	
-	// 给属性设置更新函数，在执行命名时，该函数会被执行
-	d.LightBulb.Power.SetUpdateFunc(d.update("power"))
-	d.LightBulb.Brightness.SetUpdateFunc(d.update("brightness"))
-	d.LightBulb.ColorTemp.SetUpdateFunc(d.update("color_temp"))
-	return nil
+	// 插件所支持的协议
+	pc   protocol
 }
 
-func (d *Device) Update() error {
-	// 该方法在获取设备所有属性值时调用，通过调用attribute.SetBool()等方法更新
-	// d.LightBulb.Power.SetString("on")
-	// d.LightBulb.Brightness.SetInt(100)
-	// d.LightBulb.ColorTemp.SetInt(2000)
-	return nil
-}
-
-func (d *Device) Close() error {
-	// 自定义退出相关资源的回收
-	close(d.ch)
-	return nil
-}
-
-func (d *Device) GetChannel() server.WatchChan {
-	// 返回WatchChan频道，用于状态变更推送
-	return d.ch
+func NewDevice(pc  protocol) sdk.Device {
+	return &ProtocolDevice{
+		id:           pc.GetID(),
+		model:        pc.GetModel(),
+		manufacturer: pc.GetManufacturer(),
+		pc:           pc,
+	}
 }
 
 ```
 
-4) 初始化和运行
+3) 定义协议所需属性和信息
+
+```go
+import "github.com/zhiting-tech/smartassistant/pkg/thingmodel"
+
+// 定义属性或协议信息
+// 通过实现thingmodel.IAttribute的接口，以便sdk调用
+type OnOff struct {
+	pd *ProtocolDevice
+}
+
+func (l OnOff) Set(val interface{}) error {
+	pwrState := map[]interface{}{
+		"pwr": val,
+    }
+	resp, err := l.pd.pc.SetState(pwrState)
+	if err != nil {
+		return err
+	}
+	// 设置属性完成后需要，通知到 smartassistant
+	return l.pd.Switch.Notify(thingmodel.OnOff, val)
+}
+
+func (l OnOff) Get() (interface{}, error) {
+	resp, err := l.pd.pc.GetState()
+	if err != nil {
+		return nil, err
+	}
+	pwr, ok := resp["pwr"]
+	if !ok {
+		return nil, fmt.Errorf("on off get error is state nil")
+	}
+	return pwr, nil
+}
+
+
+type Model struct {
+	pd *ProtocolDevice
+}
+
+func (l Model) Get() (interface{}, error) {
+	return l.pd.model, nil
+}
+
+func (l Model) Set(interface{}) error {
+	return nil
+}
+
+type Manufacturer struct {
+	pd *ProtocolDevice
+}
+
+func (l Manufacturer) Get() (interface{}, error) {
+	return l.pd.manufacturer, nil
+}
+
+func (l Manufacturer) Set(interface{}) error {
+	return nil
+}
+
+type Identify struct {
+	pd *ProtocolDevice
+}
+
+func (l Identify) Get() (interface{}, error) {
+	return l.pd.id, nil
+}
+
+func (l Identify) Set(interface{}) error {
+	return nil
+}
+
+```
+4) 实现协议接口
+
+```go
+
+package plugin
+
+import (
+	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2"
+	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2/definer"
+	"github.com/zhiting-tech/smartassistant/pkg/thingmodel"
+)
+
+// 定义描述协议的结构
+type ProtocolDevice struct {
+	Switch *definer.BaseService
+	info *definer.BaseService
+	
+	pc   protocol   // 所描述的协议
+}
+
+func NewDevice(pc protocol) sdk.Device {
+	return &ProtocolDevice{
+		id:           pc.GetID(),
+		model:        pc.GetModel(),
+		manufacturer: pc.GetManufacturer(),
+		pc:           pc,
+    }
+}
+
+func (pd *ProtocolDevice) Info() sdk.DeviceInfo {
+	// 该方法返回设备的主要信息
+	return sdk.DeviceInfo{
+		IID:          pd.id,
+		Model:        pd.model,
+		Manufacturer: pd.manufacturer,
+	}
+}
+
+func (pd *ProtocolDevice) Define(def *definer.Definer) {
+	// 设置符合该协议设备的属性和相关配置（比如设备id、型号、厂商等，以及设备的属性）
+	
+	// 对每个属性和配置都可以有权限
+	thingmodel.OnOff.WithPermissions(
+		thingmodel.AttributePermissionWrite,
+		thingmodel.AttributePermissionRead,
+		thingmodel.AttributePermissionNotify,
+	)
+	pd.Switch = def.Instance(pd.id).NewSwitch()
+	pd.Switch.Enable(thingmodel.OnOff, OnOff{pd})
+
+	pd.info = def.Instance(pd.id).NewInfo()
+	pd.info.Enable(thingmodel.Model, Model{pd})
+	pd.info.Enable(thingmodel.Manufacturer, Manufacturer{pd})
+	pd.info.Enable(thingmodel.Identify, Identify{pd})
+	return
+}
+
+func (pd *ProtocolDevice) Connect() error {
+	// 提供给sdk主动进行设备tcp连接
+	return nil
+}
+
+func (pd *ProtocolDevice) Disconnect() error {
+	// 提供给sdk主动断开设备tcp连接
+	return nil
+}
+
+func (pd *ProtocolDevice) Online(iid string) bool {
+	// sdk 调用该接口检测设备是否在线
+	return true
+}
+
+func Discover(ctx context.Context, devices chan<- sdk.Device) {
+    // 这里需要实现一个发现设备的方法,给sdk调用
+	discoverer := NewDiscoverer()
+	go discoverer.Run()
+	defer discoverer.Close()
+
+	for {
+		select {
+		case d, ok := <-discoverer.C:
+			if !ok {
+				return
+			}
+			l := NewDevice(d)
+			devices <- l
+		}
+	}
+	return
+}
+
+```
+
+5) 初始化和运行
 
 ```go
 package main
 
 import (
 	"log"
-
-	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/server"
-	"github.com/zhiting-tech/smartassistant/pkg/server/sdk"
+	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2"
 )
 
 func main() {
-	p := server.NewPluginServer()
-	go func() {
-		// 发现设备
-		d := NewDevice("abcdefg")
-		p.Manager.AddDevice(d)
-	}()
+	p := server.NewPluginServer(Discover)
 	err := sdk.Run(p)
 	if err != nil {
 		log.Panicln(err)

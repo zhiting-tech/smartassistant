@@ -2,22 +2,25 @@ package auth
 
 import (
 	errors2 "errors"
+	"strconv"
+	"strings"
+
 	"github.com/gin-gonic/gin"
+	"gopkg.in/oauth2.v3"
+	errors3 "gopkg.in/oauth2.v3/errors"
+	"gorm.io/gorm"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth/generate"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
+	"github.com/zhiting-tech/smartassistant/modules/file"
 	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/modules/utils/hash"
 	"github.com/zhiting-tech/smartassistant/modules/utils/jwt"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
-	"gopkg.in/oauth2.v3"
-	errors3 "gopkg.in/oauth2.v3/errors"
-	"gorm.io/gorm"
-	"strconv"
-	"strings"
 )
 
 type GetTokenReq struct {
@@ -93,12 +96,14 @@ func GetToken(c *gin.Context) {
 		if err != nil {
 			return
 		}
+		imgUrl, _ := file.GetFileUrl(c, u.AvatarID)
 		resp.UserInfo = entity.UserInfo{
 			UserId:        u.ID,
 			AccountName:   u.AccountName,
 			Nickname:      u.Nickname,
 			IsSetPassword: u.Password != "",
 			Token:         resp.TokenInfo.AccessToken,
+			AvatarUrl:     imgUrl,
 		}
 	}
 }
@@ -126,17 +131,10 @@ func (req *GetTokenReq) HandleTokenRequest(c *gin.Context) (oauth2.GrantType, *o
 		tgr.Code = req.Code
 		claims, err := generate.DecodeJwt(tgr.Code)
 		if err != nil {
-			err = errors.New(errors.InternalServerErr)
-			return "", nil, err
-		}
-
-		var u entity.User
-		u, err = entity.GetUserByIDAndAreaID(claims.UserID, claims.AreaID)
-		if err != nil {
+			err = errors.Wrap(err, errors.InternalServerErr)
 			return "", nil, err
 		}
 		areaID = claims.AreaID
-		tgr.Request.Header.Set(types.UserKey, u.Key)
 	case oauth2.PasswordCredentials:
 		u, err := req.passwordAuthorizeHandler()
 		if err != nil {
@@ -145,20 +143,19 @@ func (req *GetTokenReq) HandleTokenRequest(c *gin.Context) (oauth2.GrantType, *o
 		areaID = u.AreaID
 		tgr.UserID = strconv.Itoa(u.ID)
 
-		client, err := entity.GetSAClient()
+		client, err := entity.GetSAClient(areaID)
 		if err != nil {
 			return "", nil, err
 		}
 		tgr.ClientID = client.ClientID
 		tgr.ClientSecret = client.ClientSecret
 		tgr.Scope = client.AllowScope
-		tgr.Request.Header.Set(types.UserKey, u.Key)
 	case oauth2.ClientCredentials:
 		areaID = req.AreaID
 	case oauth2.Refreshing:
 		claims, err := generate.DecodeJwt(req.RefreshToken)
 		if err != nil {
-			err = errors.New(errors.InternalServerErr)
+			err = errors.Wrap(err, errors.InternalServerErr)
 			return "", nil, err
 		}
 		clientInfo, err := entity.GetClientByClientID(claims.ClientID)
@@ -170,8 +167,6 @@ func (req *GetTokenReq) HandleTokenRequest(c *gin.Context) (oauth2.GrantType, *o
 		tgr.ClientID = clientInfo.ClientID
 		tgr.Refresh = req.RefreshToken
 
-		u, _ := entity.GetUserByID(claims.UserID)
-		tgr.Request.Header.Set(types.UserKey, u.Key)
 		areaID = claims.AreaID
 	}
 
@@ -179,7 +174,6 @@ func (req *GetTokenReq) HandleTokenRequest(c *gin.Context) (oauth2.GrantType, *o
 		err := errors.New(errors.BadRequest)
 		return "", nil, err
 	}
-	tgr.Request.Header.Set(types.AreaID, strconv.FormatUint(areaID, 10))
 	tgr.Request.Header.Set(types.GrantType, string(gt))
 	return gt, tgr, nil
 }
@@ -210,13 +204,13 @@ func (req GetTokenReq) passwordAuthorizeHandler() (u entity.User, err error) {
 func GetUserByToken(accessToken string) (u entity.User, err error) {
 	ti, err := oauth.GetOauthServer().Manager.LoadAccessToken(accessToken)
 	if err != nil {
-		var uerr = errors.New(status.UserNotExist)
+		var uerr = errors.Wrap(err, status.UserNotExist)
 		if err.Error() == uerr.Error() {
 			return u, uerr
 		}
 
 		if err.Error() == jwt.ErrTokenIsExpired.Error() {
-			return u, errors.New(status.ErrAccessTokenExpired)
+			return u, errors.Wrap(err, status.ErrAccessTokenExpired)
 		}
 
 		return u, errors.Wrap(err, status.RequireLogin)

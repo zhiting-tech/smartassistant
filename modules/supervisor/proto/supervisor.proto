@@ -12,6 +12,8 @@ service Supervisor {
   rpc UpdateSystem(UpdateSystemReq) returns(Response);
   rpc GetSystemInfo(google.protobuf.Empty) returns(GetSystemInfoResp);
   rpc GetExtensions(google.protobuf.Empty) returns(GetExtensionsResp);
+  rpc RemoteHelp(RemoteHelpReq) returns(Response);
+  rpc RemoteHelpEnabled(google.protobuf.Empty) returns(RemoteHelpEnabledResp);
 }
 
 message UpdateItem {
@@ -46,6 +48,9 @@ message BackupReq {
   string Note = 1;
   Smartassistant Smartassistant = 2;
   repeated Plugin Plugins = 3;
+  string BackupPath = 4;
+  string FileName = 5;
+  repeated string Extensions = 6;
 }
 
 message RestoreReq {
@@ -74,4 +79,13 @@ message GetSystemInfoResp {
 
 message GetExtensionsResp {
   repeated Extension Extensions = 1;
+}
+
+message RemoteHelpReq {
+  bool Enable = 1;
+  bytes PublicKey = 2;
+}
+
+message RemoteHelpEnabledResp {
+  bool Enable = 1;
 }

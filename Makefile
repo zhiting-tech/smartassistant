@@ -10,7 +10,7 @@ start:
 build-all: build
 
 build:
-	docker build -f build/docker/Dockerfile --build-arg VERSION=$(VERSION) --build-arg GIT_COMMIT=$(shell git log -1 --format=%h) -t smartassistant:$(VERSION) .
+	docker build -f build/docker/Dockerfile --build-arg GIT_COMMIT=$(shell git log -1 --format=%h) -t smartassistant:$(VERSION) .
 
 push:
 	docker image tag smartassistant:$(VERSION) $(DOCKER_REGISTRY)zhitingtech/smartassistant:$(VERSION)

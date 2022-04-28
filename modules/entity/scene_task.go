@@ -2,10 +2,12 @@ package entity
 
 import (
 	"encoding/json"
+
+	"gorm.io/datatypes"
+
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
-	"gorm.io/datatypes"
 )
 
 // 一个任务仅允许关联一个设备，对应的多个功能点配置；
@@ -45,7 +47,7 @@ func GetSceneTasksBySceneID(sceneID int) (sceneTasks []SceneTask, err error) {
 func CreateSceneTask(sceneTask []SceneTask) (err error) {
 	err = GetDB().Create(&sceneTask).Error
 	if err != nil {
-		err = errors.New(errors.InternalServerErr)
+		err = errors.Wrap(err, errors.InternalServerErr)
 	}
 	return
 }
@@ -67,7 +69,7 @@ func (t SceneTask) CheckTaskDevice(userId int) (err error) {
 		return
 	}
 	for _, taskDevice := range ds {
-		if !up.IsDeviceAttrPermit(t.DeviceID, taskDevice) {
+		if !up.IsDeviceAttrControlPermit(t.DeviceID, taskDevice.AID) {
 			err = errors.New(status.DeviceOrSceneControlDeny)
 			return
 		}

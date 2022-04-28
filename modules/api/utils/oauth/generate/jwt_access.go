@@ -4,15 +4,17 @@ import (
 	"encoding/json"
 	errors2 "errors"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/dgrijalva/jwt-go"
+	"gopkg.in/oauth2.v3"
+
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
-	"gopkg.in/oauth2.v3"
-	"strconv"
-	"strings"
-	"time"
 )
 
 var (
@@ -30,7 +32,7 @@ type JWTAccessClaims struct {
 	ClientID        string `json:"client_id,omitempty"`
 	Scope           string `json:"scope,omitempty"`
 	CodeCreateAt    int64  `json:"code_create_at,omitempty"`
-	GrantType		string `json:"grant_type,omitempty"`
+	GrantType       string `json:"grant_type,omitempty"`
 }
 
 // Valid claims verification
@@ -63,49 +65,36 @@ type JWTAccessGenerate struct {
 
 // Token based on the UUID generated token
 func (a *JWTAccessGenerate) Token(data *oauth2.GenerateBasic, isGenRefresh bool) (string, string, error) {
-	areaID, _ := strconv.ParseUint(data.Request.Header.Get(types.AreaID), 10, 64)
-	grantType := data.Request.Header.Get(types.GrantType)
+
+	var key string
 	var userID int
+	var areaID uint64
 	if data.UserID != "" {
 		var uerr error
 		userID, uerr = strconv.Atoi(data.UserID)
 		if uerr != nil {
 			return "", "", uerr
 		}
-	}
-
-	claims := &JWTAccessClaims{
-		UserID:   userID,
-		AreaID:   areaID,
-		ClientID: data.TokenInfo.GetClientID(),
-		Scope:    data.TokenInfo.GetScope(),
-		GrantType: grantType,
-	}
-
-	userKey := data.Request.Header.Get(types.UserKey)
-	// 授权码模式获取code
-	if data.TokenInfo.GetCodeExpiresIn() != 0 {
-		claims.CodeCreateAt = data.TokenInfo.GetCodeCreateAt().Unix()
-		claims.ExpiresAt = int64(data.TokenInfo.GetCodeExpiresIn().Seconds())
-		code, err := a.GetToken(claims, userKey)
+		user, err := entity.GetUserByID(userID)
 		if err != nil {
 			return "", "", err
 		}
-		return code, "", nil
+		key = user.Key
+		areaID = user.AreaID
+	} else { // 客户端授权模式
+		key = data.Client.GetSecret()
+	}
+
+	claims := &JWTAccessClaims{
+		UserID:    userID,
+		AreaID:    areaID,
+		ClientID:  data.TokenInfo.GetClientID(),
+		Scope:     data.TokenInfo.GetScope(),
+		GrantType: data.Request.Header.Get(types.GrantType),
 	}
 
 	claims.ExpiresAt = int64(data.TokenInfo.GetAccessExpiresIn().Seconds())
 	claims.AccessCreateAt = data.TokenInfo.GetAccessCreateAt().Unix()
-
-	var key = userKey
-	if userKey == "" {
-		// 客户端模式授权
-		key = data.Client.GetSecret()
-	}
-
-	if key == "" {
-		return "", "", jwt.ErrInvalidKey
-	}
 
 	access, err := a.GetToken(claims, key)
 	if err != nil {
@@ -123,7 +112,7 @@ func (a *JWTAccessGenerate) Token(data *oauth2.GenerateBasic, isGenRefresh bool)
 			Scope:           data.TokenInfo.GetScope(),
 		}
 
-		refresh, err = a.GetToken(refreshClaims, userKey)
+		refresh, err = a.GetToken(refreshClaims, key)
 		if err != nil {
 			return "", "", err
 		}
@@ -132,19 +121,42 @@ func (a *JWTAccessGenerate) Token(data *oauth2.GenerateBasic, isGenRefresh bool)
 	return access, refresh, nil
 }
 
-func ParseJwt(access string) (*JWTAccessClaims, error) {
-	token, err := jwt.ParseWithClaims(access, &JWTAccessClaims{}, func(token *jwt.Token) (interface{}, error) {
+// ParseCode 解析Code
+func ParseCode(codeString string) (*JWTAccessClaims, error) {
+
+	var claims JWTAccessClaims
+
+	token, err := jwt.ParseWithClaims(codeString, &claims, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("signing method is invalid,method: %v", token.Header["alg"])
 		}
-
-		claims, err := DecodeJwt(access)
+		var key string
+		clientID := claims.ClientID
+		client, err := entity.GetClientByClientID(clientID)
 		if err != nil {
 			return nil, err
 		}
+		key = client.ClientSecret
+		return []byte(key), nil
+	})
+	if !token.Valid {
+		return nil, ErrTokenNotValid
+	}
+
+	return &claims, err
+}
+
+// ParseToken 解析access/refresh
+func ParseToken(tokenString string) (*JWTAccessClaims, error) {
+
+	var claims JWTAccessClaims
+
+	token, err := jwt.ParseWithClaims(tokenString, &claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("signing method is invalid,method: %v", token.Header["alg"])
+		}
 		var key string
-		userID := claims.UserID
-		if userID != 0 {
+		if claims.UserID != 0 {
 			user, err := entity.GetUserByIDAndAreaID(claims.UserID, claims.AreaID)
 			if err != nil {
 				return nil, err
@@ -161,35 +173,27 @@ func ParseJwt(access string) (*JWTAccessClaims, error) {
 				}
 			}
 		} else {
-			// 是否客户端模式授权,client key 加密的
-			clientID := claims.ClientID
-			client, err := entity.GetClientByClientID(clientID)
+			client, err := entity.GetClientByClientID(claims.ClientID)
 			if err != nil {
 				return nil, err
 			}
 			key = client.ClientSecret
 		}
+
 		return []byte(key), nil
 	})
-
 	if err != nil {
 		return nil, err
 	}
-
-	var claims *JWTAccessClaims
-	var ok bool
-	if claims, ok = token.Claims.(*JWTAccessClaims); !ok {
+	if !token.Valid {
 		return nil, ErrTokenNotValid
 	}
 
-	if err = claims.Valid(); err != nil {
-		return nil, err
-	}
-	return claims, nil
+	return &claims, err
 }
 
-func DecodeJwt(access string) (*JWTAccessClaims, error) {
-	strSlice := strings.Split(access, ".")
+func DecodeJwt(tokenString string) (*JWTAccessClaims, error) {
+	strSlice := strings.Split(tokenString, ".")
 	if len(strSlice) < 2 {
 		return nil, ErrTokenNotValid
 	}
@@ -199,12 +203,18 @@ func DecodeJwt(access string) (*JWTAccessClaims, error) {
 	}
 
 	var claims JWTAccessClaims
-	json.Unmarshal(bytes, &claims)
+	if err = json.Unmarshal(bytes, &claims); err != nil {
+		return nil, err
+	}
 	return &claims, nil
 }
 
 func (a *JWTAccessGenerate) GetToken(claims *JWTAccessClaims, key string) (string, error) {
-	token := jwt.NewWithClaims(a.SignedMethod, claims)
+	return getToken(claims, key, a.SignedMethod)
+}
+
+func getToken(claims *JWTAccessClaims, key string, signedMethod jwt.SigningMethod) (string, error) {
+	token := jwt.NewWithClaims(signedMethod, claims)
 	str, err := token.SignedString([]byte(key))
 	if err != nil {
 		return "", err

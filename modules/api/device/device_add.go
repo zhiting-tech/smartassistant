@@ -5,21 +5,18 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/zhiting-tech/smartassistant/modules/event"
-
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/area"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/device"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
-	"github.com/zhiting-tech/smartassistant/modules/plugin"
 	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
-	"github.com/zhiting-tech/smartassistant/modules/utils/session"
 	"github.com/zhiting-tech/smartassistant/pkg/analytics"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
-	"gorm.io/gorm"
 )
 
 // deviceAddReq 添加设备接口请求参数
@@ -73,35 +70,12 @@ func AddDevice(c *gin.Context) {
 			uid = userInfo.UserId
 		}
 	} else {
-		sessionUser := session.Get(c)
-		if sessionUser == nil {
-			err = errors.New(status.RequireLogin)
-			return
-		}
-		uid = sessionUser.UserID
-		if err = addDevice(&req.Device.Device, sessionUser); err != nil {
-			return
-		}
-		token := session.Get(c).Token
-		resp.PluginURL = plugin.PluginURL(req.Device.Device, c.Request, token)
-		event.GetServer().Notify(event.NewEventMessage(event.DeviceIncrease, sessionUser.AreaID))
+		err = errors.Wrap(errors2.New("invalid sa"), errors.BadRequest)
+		return
 	}
 	// 记录添加设备信息
 	go analytics.RecordStruct(analytics.EventTypeDeviceAdd, uid, req.Device.Device)
 	resp.ID = req.Device.ID
-	return
-}
-
-func addDevice(d *entity.Device, sessionUser *session.User) (err error) {
-	if !entity.JudgePermit(sessionUser.UserID, types.DeviceAdd) {
-		err = errors.New(status.Deny)
-		return
-	}
-	areaID := sessionUser.AreaID
-	d.CreatedAt = time.Now()
-	if err = device.Create(areaID, d); err != nil {
-		return
-	}
 	return
 }
 
@@ -139,6 +113,11 @@ func addSADevice(sa *entity.Device, c *gin.Context, areaType entity.AreaType) (u
 	}
 	var user entity.User
 	if user, err = entity.GetUserByID(areaObj.OwnerID); err != nil {
+		return
+	}
+
+	// 初始化client
+	if err = entity.InitClient(areaID); err != nil {
 		return
 	}
 

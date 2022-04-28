@@ -1,6 +1,7 @@
 package brand
 
 import (
+	"context"
 	"testing"
 
 	"github.com/zhiting-tech/smartassistant/modules/api/test"
@@ -54,7 +55,7 @@ func TestBrand(t *testing.T) {
 
 	// 启动插件管理
 	m := plugin.GetGlobalManager()
-	m.LoadPlugins()
+	m.LoadPluginsWithContext(context.TODO())
 
 	test.RunApiTest(t, RegisterBrandRouter, cases, test.WithRoles("管理员"))
 

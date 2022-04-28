@@ -1,26 +1,33 @@
 package plugin
 
 import (
+	"context"
 	errors2 "errors"
 	"fmt"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/mount"
-	"github.com/go-playground/validator/v10"
-	"github.com/zhiting-tech/smartassistant/modules/config"
-	"github.com/zhiting-tech/smartassistant/modules/types/status"
-	version2 "github.com/zhiting-tech/smartassistant/modules/utils/version"
-	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/mount"
+	"github.com/go-playground/validator/v10"
+
+	"github.com/zhiting-tech/smartassistant/modules/config"
+	"github.com/zhiting-tech/smartassistant/modules/types/status"
+	version2 "github.com/zhiting-tech/smartassistant/modules/utils/version"
+	"github.com/zhiting-tech/smartassistant/pkg/errors"
+	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2"
+
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/plugin/docker"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
-	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/server"
 )
 
 type DeviceType string
+
+func (t DeviceType) String() string {
+	return string(t)
+}
 
 const (
 	TypeLight          DeviceType = "light"           // 照明
@@ -42,10 +49,10 @@ const (
 	TypeDownLight        DeviceType = "down_light"         // 简射灯
 	TypeMagneticRailLamp DeviceType = "magnetic_rail_lamp" // 磁吸轨道灯
 
-	TypeOneKeySwitch    DeviceType = "one_key_switch"   // 单键开关
-	TypeTwoKeySwitch    DeviceType = "two_key_switch"   // 双键开关
-	TypeThreeKeySwitch  DeviceType = "three_key_switch" // 三键开关
-	TypeDWirelessSwitch DeviceType = "wireless_switch"  // 无线开关
+	TypeOneKeySwitch   DeviceType = "one_key_switch"   // 单键开关
+	TypeTwoKeySwitch   DeviceType = "two_key_switch"   // 双键开关
+	TypeThreeKeySwitch DeviceType = "three_key_switch" // 三键开关
+	TypeWirelessSwitch DeviceType = "wireless_switch"  // 无线开关
 
 	TypeConverter  DeviceType = "converter"   // 转换器
 	TypeWallPlug   DeviceType = "wall_plug"   // 入墙插座
@@ -74,9 +81,9 @@ const (
 const (
 	cpuShare = 512 // CPU资源紧张时插件CPU资源权重设为为512，保证不与SA服务抢资源。SA为默认1024
 
-	// 两个参数绑定一起，标识只允许使用0.25个cpu资源
+	// 两个参数绑定一起，标识只允许使用 cpuQuota / cpuPeriod 个cpu资源
 	cpuPeriod = 100000
-	cpuQuota  = 2500
+	cpuQuota  = 10000
 
 	networkModeHost = "host"
 )
@@ -247,7 +254,7 @@ func (p Plugin) StopAndRemovePluginImage() (err error) {
 }
 
 // Remove 删除插件
-func (p Plugin) Remove() (err error) {
+func (p Plugin) Remove(ctx context.Context) (err error) {
 	logger.Info("removing plugin", p.ID)
 
 	// 先移除配对再暂停和移除容器
@@ -257,7 +264,12 @@ func (p Plugin) Remove() (err error) {
 	}
 
 	for _, d := range devices {
-		if err = DisconnectDevice(d.Identity, d.PluginID, nil); err != nil {
+		identify := Identify{
+			PluginID: d.PluginID,
+			IID:      d.IID,
+			AreaID:   d.AreaID,
+		}
+		if err = DisconnectDevice(ctx, identify, nil); err != nil {
 			logger.Error("disconnect err:", err)
 		}
 	}
@@ -276,99 +288,45 @@ func (p Plugin) Remove() (err error) {
 	return
 }
 
-type Attribute struct {
-	server.Attribute
-	CanControl bool `json:"can_control"`
+type AttributeChange struct {
+	Device entity.Device
+	IID    string
+	AID    int
+	Val    interface{}
 }
 
-type Instance struct {
-	Type       string      `json:"type"`
-	InstanceId int         `json:"instance_id"`
-	Attributes []Attribute `json:"attributes"`
-}
+type OnDeviceStateChange func(ac AttributeChange) error
 
-type DeviceInstances struct {
-	Identity  string     `json:"identity"`
-	Instances []Instance `json:"instances"`
-
-	// OTASupport 是否支持OTA
-	OTASupport bool `json:"ota_support"`
-}
-
-type DeviceInfo struct {
-	Identity     string
-	Model        string
-	Manufacturer string
-	Version      string
-}
-
-// GetInfo 获取设备基础信息
-func (das DeviceInstances) GetInfo() (d DeviceInfo, err error) {
-
-	for _, ins := range das.Instances {
-		if ins.Type != "info" {
-			continue
-		}
-		for _, attr := range ins.Attributes {
-			switch attr.Attribute.Attribute {
-			case "model":
-				d.Model = attr.Val.(string)
-			case "manufacturer":
-				d.Manufacturer = attr.Val.(string)
-			case "identity":
-				d.Identity = attr.Val.(string)
-			case "version":
-				d.Version = attr.Val.(string)
-			}
-		}
-		return
-	}
-	err = errors2.New("info instance not found")
-	return
-}
-
-func GetInfoFromDeviceAttrs(pluginID string, das DeviceInstances) (d entity.Device, err error) {
-	d.Identity = das.Identity
-	d.PluginID = pluginID
-	for _, ins := range das.Instances {
-		if ins.Type == "info" {
-			for _, attr := range ins.Attributes {
-				switch attr.Attribute.Attribute {
-				case "model":
-					d.Model = attr.Val.(string)
-					d.Name = attr.Val.(string)
-				case "manufacturer":
-					d.Manufacturer = attr.Val.(string)
-				}
-			}
-			return
-		}
-	}
-	err = errors2.New("no instance info found")
-	return
-}
-
-type OnDeviceStateChange func(d entity.Device, attr entity.Attribute) error
-
-func DefaultOnDeviceStateChange(d entity.Device, attr entity.Attribute) error {
+func DefaultOnDeviceStateChange(ac AttributeChange) error {
 	return errors2.New("OnDeviceStateChange not implement")
 }
 
 type DiscoverResponse struct {
+	IID          string `json:"iid"`
 	Name         string `json:"name"`
-	Identity     string `json:"identity"`
 	Model        string `json:"model"`
 	Manufacturer string `json:"manufacturer"`
 	PluginID     string `json:"plugin_id"`
 	LogoURL      string `json:"logo_url"`
 	AuthRequired bool   `json:"auth_required"`
+
+	AuthParams []sdk.AuthParam `json:"auth_params"`
 }
 
 // RunPlugin 运行插件
 func RunPlugin(plg Plugin) (containerID string, err error) {
 	conf := container.Config{
 		Image: plg.Image,
-		Env:   []string{fmt.Sprintf("PLUGIN_DOMAIN=%s", plg.ID)},
+		Env: []string{
+			fmt.Sprintf("PLUGIN_DOMAIN=%s", plg.ID),
+			fmt.Sprintf("AREA_ID=%d", plg.AreaID),
+			fmt.Sprintf("SA_ID=%s", config.GetConf().SmartAssistant.ID),
+			fmt.Sprintf("SDK_VERSION=%s", "2.0"),
+		},
+		Labels: map[string]string{
+			"com.zhiting.smartassistant.resource.service_type": "plugin",
+			"com.zhiting.smartassistant.resource.service_name": plg.Name,
+		},
 	}
 	// 映射插件目录到宿主机上
 	source := filepath.Join(config.GetConf().SmartAssistant.RuntimePath,
@@ -393,16 +351,6 @@ func RunPlugin(plg Plugin) (containerID string, err error) {
 			CPUPeriod: cpuPeriod,
 			CPUQuota:  cpuQuota,
 		},
-	}
-	if config.GetConf().SmartAssistant.FluentdAddress != "" {
-		// 设置容器的logging, driver
-		hostConf.LogConfig = container.LogConfig{
-			Type: "fluentd",
-			Config: map[string]string{
-				"fluentd-address": config.GetConf().SmartAssistant.FluentdAddress,
-				"tag":             fmt.Sprintf("smartassistant.plugin.%s", plg.Image),
-			},
-		}
 	}
 	return docker.GetClient().ContainerRun(plg.Image, conf, hostConf)
 }

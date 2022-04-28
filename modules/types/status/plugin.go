@@ -11,6 +11,8 @@ const (
 	PluginContentIllegal
 	PluginPullFail
 	PluginUpFail
+	WebsocketCommandNotFound
+	WebsocketDomainRequired
 )
 
 func init() {
@@ -21,4 +23,6 @@ func init() {
 	errors.NewCode(PluginContentIllegal, "插件包内容不符合规范")
 	errors.NewCode(PluginPullFail, "下载插件失败")
 	errors.NewCode(PluginUpFail, "运行插件失败")
+	errors.NewCode(WebsocketCommandNotFound, "websocket 命令不存在")
+	errors.NewCode(WebsocketDomainRequired, "websocket 命令未指定 domain")
 }

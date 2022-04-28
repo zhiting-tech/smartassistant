@@ -1,0 +1,130 @@
+syntax = "proto3";
+package proto;
+option go_package = "./proto";
+
+// 默认存储池名称 __system__ 默认分区 __system__
+service DiskManager {
+  // 物理分区列表
+  rpc PhysicalVolumeList(empty) returns (PhysicalVolumeListResp);
+  // 储存池，以及储存池下的物理分区，逻辑分区
+  rpc VolumeGroupList (empty) returns (VolumeGroupListResp);
+  // 选择物理分区，创建存储池
+  rpc VolumeGroupCreate(VolumeGroupCreateOrExtendReq) returns(VolumeGroupResp);
+  // 添加物理分区到存储池
+  rpc VolumeGroupExtend(VolumeGroupCreateOrExtendReq) returns(VolumeGroupResp);
+  // 重命名存储池
+  rpc VolumeGroupRename(VolumeGroupRenameReq) returns(VolumeGroupResp);
+  // 删除存储池
+  rpc VolumeGroupRemove(VolumeGroupRemoveReq) returns(empty);
+  // 创建逻辑分区
+  rpc LogicalVolumeCreate(LogicalVolumeCreateReq) returns(LogicalVolumeResp);
+  // 修改逻辑分区名称
+  rpc LogicalVolumeRename(LogicalVolumeRenameReq) returns(LogicalVolumeResp);
+  // 增大逻辑分区大小；请使用足够长的超时时间
+  rpc LogicalVolumeExtend(LogicalVolumeExtendReq) returns(LogicalVolumeResp);
+  // 删除逻辑分区
+  rpc LogicalVolumeRemove(LogicalVolumeRemoveReq) returns(empty);
+  // 外部已被挂载物理分区列表
+  rpc PhysicalMountedList(empty) returns (PhysicalVolumeListResp);
+  // 挂载外部硬盘
+  rpc MountPhysical(MountPhysicalReq) returns(empty);
+  // 弹出挂载硬盘
+  rpc UnmountPhysical (MountPhysicalReq) returns(empty);
+}
+
+message PhysicalVolumeListResp {
+  repeated PhysicalVolume PVS = 1;
+}
+
+message VolumeGroupListResp {
+  repeated VolumeGroup VGS = 3;
+}
+
+message VolumeGroupCreateOrExtendReq {
+  string VGName = 1;
+  string PVName = 2;
+}
+
+message VolumeGroupRenameReq {
+  string OldName = 1;
+  string NewName = 2;
+}
+
+message VolumeGroupResp {
+  VolumeGroup Data = 3;
+}
+
+message MountPhysicalReq {
+  string PVName = 1;
+}
+
+message VolumeGroupRemoveReq {
+  string VGName = 1;
+}
+
+message LogicalVolumeCreateReq {
+  string VGName = 1;
+  string LVName = 2;
+  // 逻辑分区大小，以MB计算
+  int64 SizeM = 3;
+}
+
+message LogicalVolumeRenameReq {
+  string VGName = 1;
+  string LVName = 2;
+  string NewLVName = 3;
+}
+
+message LogicalVolumeExtendReq {
+  string VGName = 1;
+  string LVName = 2;
+  // 逻辑分区大小，以MiB计算
+  int64 NewSizeM = 3;
+}
+
+message LogicalVolumeRemoveReq {
+  string VGName = 1;
+  string LVName = 2;
+}
+
+message LogicalVolumeResp {
+  LogicalVolume Data = 1;
+}
+
+// 储存池
+message VolumeGroup {
+  string Name = 1;
+  bool Exported = 2;
+  int64 Size = 3;
+  int64 FreeSize = 4;
+  string UUID = 5;
+  repeated LogicalVolume LVS = 6;
+  repeated PhysicalVolume PVS = 7;
+}
+// 逻辑分区
+message LogicalVolume {
+  string Name = 1;
+  string VGName = 2;
+  int64 Size = 3;
+  int64 FreeSize = 4;
+  string Path = 5;
+  string UUID = 6;
+}
+
+// 物理分区
+message PhysicalVolume {
+  string Name = 1;
+  string VGName = 2;  // 如果为空，则是未加入的分区
+  int64 Size = 3;
+  string UUID = 4;
+  string MetaData = 5;
+  bool  IsMounted = 6;
+}
+
+message ErrorResponse {
+  int32 Status = 1;
+  string Reason = 2;
+}
+
+message empty {
+}

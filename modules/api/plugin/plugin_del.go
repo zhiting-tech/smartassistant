@@ -2,11 +2,12 @@ package plugin
 
 import (
 	"github.com/gin-gonic/gin"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
-	"github.com/zhiting-tech/smartassistant/modules/event"
 	"github.com/zhiting-tech/smartassistant/modules/plugin"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
+	"github.com/zhiting-tech/smartassistant/pkg/event"
 )
 
 type delPluginReq struct {
@@ -34,6 +35,6 @@ func DelPlugin(c *gin.Context) {
 		return
 	}
 	plg := plugin.NewFromEntity(p)
-	err = plg.Remove()
-	event.GetServer().Notify(event.NewEventMessage(event.DeviceDecrease, sessionUser.AreaID))
+	err = plg.Remove(c.Request.Context())
+	event.Notify(event.NewEventMessage(event.DeviceDecrease, sessionUser.AreaID))
 }

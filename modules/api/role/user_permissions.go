@@ -2,12 +2,13 @@ package role
 
 import (
 	"fmt"
-	"github.com/sirupsen/logrus"
+	"strconv"
+	"strings"
+
 	"github.com/zhiting-tech/smartassistant/modules/device"
 	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
-	"strconv"
-	"strings"
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
 
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
@@ -90,7 +91,7 @@ func UserPermissions(c *gin.Context) {
 	}
 	up, err := entity.GetUserPermissions(userID)
 	if err != nil {
-		logrus.Errorf("wrap err: GetUserPermissions error: %s", err.Error())
+		logger.Errorf("wrap err: GetUserPermissions error: %s", err.Error())
 		return
 	}
 	resp.wrap(ps.Device, up)
@@ -109,7 +110,7 @@ func UserPermissions(c *gin.Context) {
 	if entity.IsHome(curArea.AreaType) {
 		resp.wrap(ps.Area, up)
 		resp.wrap(ps.Location, up)
-	}else {
+	} else {
 		resp.wrap(ps.Company, up)
 		resp.wrap(ps.Department, up)
 	}

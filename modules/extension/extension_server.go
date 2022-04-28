@@ -2,18 +2,20 @@ package extension
 
 import (
 	"context"
+	"net"
+
 	jsoniter "github.com/json-iterator/go"
-	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/auth"
 	"github.com/zhiting-tech/smartassistant/modules/config"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	pb "github.com/zhiting-tech/smartassistant/pkg/extension/proto"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-	"net"
 )
 
 // ExtensionServer 扩展服务
@@ -162,10 +164,10 @@ func (es *ExtensionServer) GetBaseUserInfos(ctx context.Context, req *pb.BaseUse
 		}
 		for _, u := range users {
 			resp.Users = append(resp.Users, &pb.UserInfo{
-				UserId: int32(u.ID),
+				UserId:      int32(u.ID),
 				AccountName: u.AccountName,
-				NickName: u.Nickname,
-				IsOwner: owner.ID == u.ID,
+				NickName:    u.Nickname,
+				IsOwner:     owner.ID == u.ID,
 			})
 		}
 		return
@@ -177,10 +179,45 @@ func (es *ExtensionServer) GetBaseUserInfos(ctx context.Context, req *pb.BaseUse
 			continue
 		}
 		resp.Users = append(resp.Users, &pb.UserInfo{
-			UserId: int32(user.ID),
+			UserId:      int32(user.ID),
 			AccountName: user.AccountName,
-			NickName: user.Nickname,
-			IsOwner: owner.ID == user.ID,
+			NickName:    user.Nickname,
+			IsOwner:     owner.ID == user.ID,
+		})
+	}
+	return
+}
+
+// GetDepartments 获取公司下的部门
+func (es *ExtensionServer) GetDepartments(ctx context.Context, req *pb.GetAreaInfoReq) (resp *pb.DepartmentsResp, err error) {
+	resp = &pb.DepartmentsResp{}
+	user, err := auth.GetUserByToken(req.Token)
+	if err != nil {
+		err = newGRPCError(err)
+		return
+	}
+	_, err = entity.GetAreaByID(user.AreaID)
+	if err != nil {
+		err = newGRPCError(err)
+		return
+	}
+	var departments []entity.Department
+	if departments, err = entity.GetDepartments(user.AreaID); err != nil {
+		err = newGRPCError(err)
+		return
+	}
+	for _, d := range departments {
+		var users []entity.User
+		users, err = entity.GetDepartmentUsers(d.ID)
+		if err != nil {
+			err = newGRPCError(err)
+			return
+		}
+		resp.Departments = append(resp.Departments, &pb.DepartmentBaseInfo{
+			DepartmentId: int32(d.ID),
+			Name:         d.Name,
+			Sort:         int32(d.Sort),
+			UserCount:    int32(len(users)),
 		})
 	}
 	return
@@ -228,22 +265,25 @@ func (es *ExtensionServer) Notify(notifyType pb.SAEvent, content map[string]inte
 }
 
 func (es *ExtensionServer) Run(ctx context.Context) {
-	server := grpc.NewServer()
+	server := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(otelgrpc.UnaryServerInterceptor()),
+		grpc.ChainStreamInterceptor(otelgrpc.StreamServerInterceptor()),
+	)
 	pb.RegisterExtensionServer(server, es)
 	lis, err := net.Listen("tcp", config.GetConf().Extension.GRPCAddress())
 	if err != nil {
-		logrus.Error(err)
+		logger.Error(err)
 		return
 	}
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				logrus.Error(r)
+				logger.Error(r)
 			}
 		}()
 		err = server.Serve(lis)
 		if err != nil {
-			logrus.Error(err)
+			logger.Error(err)
 			return
 		}
 	}()

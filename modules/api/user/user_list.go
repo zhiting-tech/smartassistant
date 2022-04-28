@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
+	"github.com/zhiting-tech/smartassistant/modules/file"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
@@ -49,13 +50,13 @@ func ListUser(c *gin.Context) {
 		return
 	}
 
-	resp.Users, err = WrapUsers(userRoles, sessionUser.AreaID)
+	resp.Users, err = WrapUsers(c, userRoles, sessionUser.AreaID)
 	resp.UserCount = len(resp.Users)
 	return
 
 }
 
-func WrapUsers(userRoles []entity.UserRole, areaID uint64) (listUsers []entity.UserInfo, err error) {
+func WrapUsers(c *gin.Context, userRoles []entity.UserRole, areaID uint64) (listUsers []entity.UserInfo, err error) {
 
 	users := make(map[int]entity.UserInfo)
 
@@ -67,6 +68,7 @@ func WrapUsers(userRoles []entity.UserRole, areaID uint64) (listUsers []entity.U
 			userInfo.Nickname = userRole.User.Nickname
 			userInfo.IsSetPassword = userRole.User.Password != ""
 			userInfo.RoleInfos = []entity.RoleInfo{{ID: userRole.Role.ID, Name: userRole.Role.Name}}
+			userInfo.AvatarUrl, _ = file.GetFileUrl(c, userRole.User.AvatarID)
 			users[userRole.UserID] = userInfo
 		} else {
 			roleInfo := entity.RoleInfo{ID: userRole.Role.ID, Name: userRole.Role.Name}
@@ -83,12 +85,14 @@ func WrapUsers(userRoles []entity.UserRole, areaID uint64) (listUsers []entity.U
 	if err != nil {
 		return
 	}
+	imgUrl, _ := file.GetFileUrl(c, owner.AvatarID)
 	ownerInfo := entity.UserInfo{
 		UserId:        owner.ID,
 		RoleInfos:     []entity.RoleInfo{{ID: entity.OwnerRoleID, Name: entity.Owner}},
 		AccountName:   owner.AccountName,
 		Nickname:      owner.Nickname,
 		IsSetPassword: owner.Password != "",
+		AvatarUrl:     imgUrl,
 	}
 	listUsers = append(listUsers, ownerInfo)
 	// 返回的成员列表按照加入家庭的时间正序排序，这里使用UserID进行排序

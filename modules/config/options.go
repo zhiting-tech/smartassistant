@@ -7,6 +7,7 @@ import (
 )
 
 func defaultOptions() (option Options) {
+	option.Oss.Driver = "local"
 	err := yaml.Unmarshal(config.DefaultSmartassistantConfigData, &option)
 	if err != nil {
 		logger.Panic(err)
@@ -21,4 +22,5 @@ type Options struct {
 	SmartAssistant SmartAssistant `json:"smartassistant" yaml:"smartassistant"`
 	Datatunnel     Datatunnel     `json:"datatunnel" yaml:"datatunnel"`
 	Extension      Extension      `json:"extension" yaml:"extension"`
+	Oss            Oss            `json:"OSS" yaml:"OSS"`
 }

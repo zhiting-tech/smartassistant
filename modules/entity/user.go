@@ -11,7 +11,7 @@ import (
 )
 
 type User struct {
-	// 使用自定义tag 配合 ./sqlite.go下的DataTypeOf() 和CreateTable()确保能给字段加上autoIncrement标签
+	// 使用自定义tag 配合 Dialector.DataTypeOf() 和 Migrator.CreateTable()确保能给字段加上autoIncrement标签
 	ID          int       `json:"id" gorm:"sqliteType:integer PRIMARY KEY AUTOINCREMENT"`
 	AccountName string    `json:"account_name"`
 	Nickname    string    `json:"nickname"`
@@ -20,11 +20,12 @@ type User struct {
 	Salt        string    `json:"salt"`
 	Key         string    `json:"key" gorm:"uniqueIndex"`
 	CreatedAt   time.Time `json:"created_at"`
+	AvatarID    int       `json:"avatar_id"`
 
-	AreaID  uint64 `gorm:"type:bigint;index"`
-	Area    Area   `gorm:"constraint:OnDelete:CASCADE;"`
-	PasswordUpdateTime   time.Time
-	Deleted gorm.DeletedAt
+	AreaID             uint64 `gorm:"type:bigint;index"`
+	Area               Area   `gorm:"constraint:OnDelete:CASCADE;"`
+	PasswordUpdateTime time.Time
+	Deleted            gorm.DeletedAt
 }
 
 type UserInfo struct {
@@ -35,6 +36,7 @@ type UserInfo struct {
 	Token         string     `json:"token,omitempty"`
 	Phone         string     `json:"phone"`
 	IsSetPassword bool       `json:"is_set_password"`
+	AvatarUrl     string     `json:"avatar_url"`
 }
 
 func (u User) TableName() string {
@@ -106,6 +108,7 @@ func DelUser(id int) (err error) {
 		} else {
 			err = errors.Wrap(err, errors.InternalServerErr)
 		}
+		return
 	}
 	return
 }

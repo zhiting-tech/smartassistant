@@ -1,30 +1,40 @@
 package location
 
 import (
-	"github.com/zhiting-tech/smartassistant/modules/api/device"
+	"sort"
 	"strconv"
+
+	device2 "github.com/zhiting-tech/smartassistant/modules/device"
+	"github.com/zhiting-tech/smartassistant/modules/plugin"
+	"github.com/zhiting-tech/smartassistant/modules/types"
+	"github.com/zhiting-tech/smartassistant/modules/utils/session"
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
 
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 
 	"github.com/gin-gonic/gin"
+
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 )
 
 // infoResp 房间详情接口返回数据
 type infoResp struct {
-	Name    string       `json:"name"`
-	Devices []InfoDevice `json:"devices"`
+	Name    string   `json:"name"`
+	Devices []Device `json:"devices"`
 }
 
-// InfoDevice 设备信息
-type InfoDevice struct {
+// Device 设备信息
+type Device struct {
 	ID        int    `json:"id"`
+	Logo      string `json:"logo"`
 	LogoURL   string `json:"logo_url"`
 	Name      string `json:"name"`
-	IsSa      bool   `json:"is_sa"`
+	IsSA      bool   `json:"is_sa"`
+	Control   string `json:"control"`
 	PluginURL string `json:"plugin_url"`
 	PluginID  string `json:"plugin_id"`
+	Type      string `json:"type"`
 }
 
 // InfoLocation 用于处理房间详情接口的请求
@@ -32,13 +42,13 @@ func InfoLocation(c *gin.Context) {
 	var (
 		err         error
 		locationId  int
-		infoDevices []InfoDevice
+		infoDevices []Device
 		resp        infoResp
 		location    entity.Location
 	)
 	defer func() {
 		if resp.Devices == nil {
-			resp.Devices = make([]InfoDevice, 0)
+			resp.Devices = make([]Device, 0)
 		}
 		response.HandleResponse(c, err, resp)
 	}()
@@ -62,7 +72,7 @@ func InfoLocation(c *gin.Context) {
 	return
 }
 
-func GetDeviceByLocationID(LocationId int, c *gin.Context) (infoDevices []InfoDevice, err error) {
+func GetDeviceByLocationID(LocationId int, c *gin.Context) (infoDevices []Device, err error) {
 	var (
 		devices []entity.Device
 	)
@@ -72,20 +82,50 @@ func GetDeviceByLocationID(LocationId int, c *gin.Context) (infoDevices []InfoDe
 	if err != nil {
 		return
 	}
-	deviceInfos, err := device.WrapDevices(c, devices, device.AllDevice)
+	infoDevices, err = WrapDevices(c, devices)
 	if err != nil {
 		return
 	}
-	for _, di := range deviceInfos {
-		infoDevices = append(infoDevices, InfoDevice{
-			ID:        di.ID,
-			LogoURL:   di.LogoURL,
-			Name:      di.Name,
-			IsSa:      di.IsSA,
-			PluginURL: di.PluginURL,
-			PluginID:  di.PluginID,
-		})
-	}
 
+	return
+}
+
+func WrapDevices(c *gin.Context, devices []entity.Device) (result []Device, err error) {
+
+	u := session.Get(c)
+
+	for _, d := range devices {
+		logoUrl, logo := device2.LogoInfo(c, d)
+		dd := Device{
+			ID:      d.ID,
+			Name:    d.Name,
+			Logo:    logo,
+			LogoURL: logoUrl,
+			Type:    d.Type,
+		}
+		if d.Model == types.SaModel {
+			dd.IsSA = true
+			dd.PluginID = ""
+		} else {
+			dd.PluginID = d.PluginID
+			var pluginURL *plugin.URL
+			pluginURL, err = plugin.ControlURL(d, c.Request, u.UserID)
+			if err != nil {
+				logger.Errorf("Get plugin url err: %v\n", err)
+				err = nil
+				continue
+			}
+			dd.PluginURL = pluginURL.String()
+			dd.Control = pluginURL.PluginPath()
+		}
+		result = append(result, dd)
+
+	}
+	sort.SliceStable(result, func(i, j int) bool {
+		if result[i].IsSA {
+			return true
+		}
+		return false
+	})
 	return
 }

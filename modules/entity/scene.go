@@ -38,7 +38,8 @@ const (
 type Scene struct {
 	ID             int    `json:"id"`
 	Name           string `json:"name"`
-	ConditionLogic int    `json:"condition_logic"` // 1 为 全部满足，2为满足任一
+	ConditionLogic int    `json:"condition_logic"`       // 1 为 全部满足，2为满足任一
+	Sort           int    `json:"sort" gorm:"default:0"` // 排序
 
 	// 生效时间的配置
 	TimePeriodType TimePeriodType `json:"time_period"` // 全天1、时间段2
@@ -104,7 +105,7 @@ func (s Scene) IsMatchAllCondition() bool {
 }
 
 func GetScenes(areaID uint64) (scenes []Scene, err error) {
-	err = GetDBWithAreaScope(areaID).Find(&scenes).Error
+	err = GetDBWithAreaScope(areaID).Order("sort asc,id desc").Find(&scenes).Error
 	return
 }
 
@@ -267,5 +268,12 @@ func UpdateSceneByIDWithTx(sceneID int, update *Scene, tx *gorm.DB) (err error) 
 		return
 	}
 	err = tx.Model(&Scene{}).Where("id=?", sceneID).UpdateColumn("version", gorm.Expr("version+1")).Error
+	return
+}
+
+// UpdateSceneSort 修改场景的排序
+func UpdateSceneSort(tx *gorm.DB, id int, sort int, areaID uint64) (err error) {
+	err = tx.First(&Scene{}, "id=? and area_id=?", id, areaID).
+		Update("sort", sort).Error
 	return
 }

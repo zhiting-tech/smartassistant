@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/sirupsen/logrus"
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
 )
 
 var (
@@ -41,16 +41,16 @@ func GetManager() *Manager {
 
 func (m *Manager) GetUpstream(path string) (up Upstream, err error) {
 
-	logrus.Debugf("get upstream %s", path)
+	logger.Debugf("get upstream %s", path)
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	up, ok := m.servers[path]
 	if !ok {
 		err = ErrorUpstreamNotFound
-		logrus.Errorf("upstream %s not found", path)
+		logger.Errorf("upstream %s not found", path)
 		return
 	}
-	logrus.Debugf("upstream %s found", path)
+	logger.Debugf("upstream %s found", path)
 	return
 }
 

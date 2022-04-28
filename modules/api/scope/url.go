@@ -6,8 +6,8 @@ import (
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
-	"github.com/zhiting-tech/smartassistant/modules/utils/cache"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
+	"github.com/zhiting-tech/smartassistant/pkg/cache"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 )
 
@@ -21,12 +21,12 @@ func RegisterScopeRouter(r gin.IRouter) {
 func requireCode(c *gin.Context) {
 	// 校验请求头verification-code是否有值
 	code := c.GetHeader(types.VerificationKey)
-	val := cache.GetValWithCode(code)
-	if code != "" && val != "" {
-		c.Request.Header.Set(types.SATokenKey, val)
+	val, err := cache.Get(code)
+	if err == nil {
+		c.Request.Header.Set(types.SATokenKey, val.(string))
 		c.Next()
 		// 验证成功后删除code
-		cache.GetCache().Delete(code)
+		cache.Delete(code)
 		return
 	}
 

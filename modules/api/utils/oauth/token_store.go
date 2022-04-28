@@ -1,11 +1,13 @@
 package oauth
 
 import (
-	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth/generate"
-	"gopkg.in/oauth2.v3"
-	"gopkg.in/oauth2.v3/models"
 	"strconv"
 	"time"
+
+	"gopkg.in/oauth2.v3"
+	"gopkg.in/oauth2.v3/models"
+
+	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth/generate"
 )
 
 type TokenStore struct {
@@ -32,7 +34,7 @@ func (t TokenStore) RemoveByRefresh(refresh string) error {
 }
 
 func (t TokenStore) GetByCode(code string) (oauth2.TokenInfo, error) {
-	claims, err := generate.ParseJwt(code)
+	claims, err := generate.ParseCode(code)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +50,7 @@ func (t TokenStore) GetByCode(code string) (oauth2.TokenInfo, error) {
 
 func (t TokenStore) GetByAccess(access string) (oauth2.TokenInfo, error) {
 
-	claims, err := generate.ParseJwt(access)
+	claims, err := generate.ParseToken(access)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +66,7 @@ func (t TokenStore) GetByAccess(access string) (oauth2.TokenInfo, error) {
 }
 
 func (t TokenStore) GetByRefresh(refresh string) (oauth2.TokenInfo, error) {
-	claims, err := generate.ParseJwt(refresh)
+	claims, err := generate.ParseToken(refresh)
 	if err != nil {
 		return nil, err
 	}

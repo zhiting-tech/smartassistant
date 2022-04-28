@@ -76,7 +76,7 @@ func UpdateLastVersion(c *gin.Context) {
 		response.HandleResponse(c, err, resp)
 	}()
 
-	if result, err = cloud.GetLastSoftwareVersion(); err != nil {
+	if result, err = cloud.GetLastSoftwareVersionWithContext(c.Request.Context()); err != nil {
 		err = errors.Wrap(err, status.GetImageVersionErr)
 		return
 	}

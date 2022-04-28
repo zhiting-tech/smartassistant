@@ -24,6 +24,9 @@ func LocalIP() (string, error) {
 			var ip net.IP
 			switch v := addr.(type) {
 			case *net.IPNet:
+				if v.IP.To4() == nil {
+					continue
+				}
 				ip = v.IP
 			case *net.IPAddr:
 				ip = v.IP

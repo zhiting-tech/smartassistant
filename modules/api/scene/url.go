@@ -23,6 +23,7 @@ func InitSceneRouter(r gin.IRouter) {
 		sceneGroup.GET("", ListScene)
 		sceneGroup.GET(":id", requireBelongsToUser, InfoScene)
 		sceneGroup.POST(":id/execute", requireBelongsToUser, ExecuteScene)
+		sceneGroup.PUT("", middleware.RequirePermission(types.SceneUpdate), OrderScene)
 	}
 
 	r.GET("scene_logs", middleware.RequireAccount, ListSceneTaskLog)

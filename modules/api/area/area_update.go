@@ -62,6 +62,6 @@ func UpdateArea(c *gin.Context) {
 	if err = entity.UpdateArea(areaID, updates); err != nil {
 		return
 	}
-	cloud.UpdateAreaName(areaID, req.Name)
+	cloud.UpdateAreaNameWithContext(c.Request.Context(), areaID, req.Name)
 	return
 }

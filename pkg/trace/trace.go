@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sync/atomic"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
@@ -31,6 +32,12 @@ const (
 
 	AgentAdminHTTP = 14271
 )
+
+var traceEnable int32 = 0
+
+func Enable() bool {
+	return atomic.LoadInt32(&traceEnable) != 0
+}
 
 func envOr(key, defaultValue string) string {
 	if v, ok := os.LookupEnv(key); ok && v != "" {
@@ -86,6 +93,7 @@ func Init(service string, opts ...sdktrace.TracerProviderOption) {
 		otel.SetTracerProvider(tp)
 		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 		http.DefaultClient.Transport = otelhttp.NewTransport(http.DefaultTransport)
+		atomic.StoreInt32(&traceEnable, 1)
 	}()
 }
 

@@ -55,7 +55,7 @@ func New() *logrus.Logger {
 
 // InitLogger generate a global instance
 func InitLogger(output io.Writer, level logrus.Level, f logrus.Fields, debug bool, hooks ...logrus.Hook) {
-	newLogger.SetOutput(output)
+	newLogger.SetOutput(io.MultiWriter(output, getRemoteWriter()))
 	newLogger.SetLevel(level)
 
 	format := &logrus.JSONFormatter{}

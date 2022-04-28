@@ -2,34 +2,42 @@ package websocket
 
 import (
 	"encoding/json"
-	"github.com/sirupsen/logrus"
-	"github.com/zhiting-tech/smartassistant/modules/utils/session"
+
+	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc/codes"
+
+	"github.com/zhiting-tech/smartassistant/modules/utils/session"
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
 )
 
-type MsgType string
-type EventType string
+type ServiceType string
 
 // websocket API命令
 const (
 	// serviceDiscover 发现设备
-	serviceDiscover = "discover"
+	serviceDiscover ServiceType = "discover"
 
-	// serviceGetAttributes 获取设备所有属性
-	serviceGetAttributes = "get_attributes"
+	// serviceGetInstances 获取设备物模型
+	serviceGetInstances ServiceType = "get_instances"
 	// serviceSetAttributes 设置设备属性
-	serviceSetAttributes = "set_attributes"
-	// serviceUpdateThingModel
-	serviceUpdateThingModel = "update_thing_model"
+	serviceSetAttributes ServiceType = "set_attributes"
 	// serviceConnect 连接（认证、配对）
-	serviceConnect = "connect"
+	serviceConnect ServiceType = "connect"
 	// serviceDisconnect 断开连接（取消配对）
-	serviceDisconnect = "disconnect"
+	serviceDisconnect ServiceType = "disconnect"
 	// serviceOTA 查看设备是否有固件更新
-	serviceCheckUpdate = "check_update"
+	serviceCheckUpdate ServiceType = "check_update"
 	// serviceOTA 更新设备固件
-	serviceOTA = "ota"
+	serviceOTA ServiceType = "ota"
+	// serviceListGateways
+	serviceListGateways ServiceType = "list_gateways"
+	// serviceDeviceStates 设备的日志
+	serviceDeviceStates ServiceType = "device_states"
+	// serviceSubDevices 子设备列表
+	serviceSubDevices ServiceType = "sub_devices"
 )
+
+type MsgType string
 
 // 消息类型
 const (
@@ -37,40 +45,34 @@ const (
 	MsgTypeEvent    MsgType = "event"
 )
 
-// callService websocket命令结构体
-type callService struct {
-	Domain      string          // 不为空时等于插件唯一标识
-	ID          int             // 请求ID，由客户端生成
-	Service     string          // 对应的websocket命令
-	ServiceData json.RawMessage `json:"service_data"` // 具体的参数
-	Identity    string          // 插件中设备唯一标识
+type Request struct {
+	ID      int64           `json:"id"`      // 请求ID，由客户端生成
+	Domain  string          `json:"domain"`  // 不为空时等于插件唯一标识
+	Service ServiceType     `json:"service"` // 对应的websocket命令
+	Data    json.RawMessage `json:"data"`    // 具体的参数
 
-	callUser session.User // 发起请求的用户信息
+	ginCtx *gin.Context
+	user   session.User // 发起请求的用户信息
 }
 
-type Result map[string]interface{}
+type CallFunc func(req Request) (interface{}, error)
 
-type CallFunc func(service callService) (Result, error)
+var callFunctions = make(map[ServiceType]CallFunc)
 
-var callFunctions = make(map[string]CallFunc)
-
-func RegisterCallFunc(cmd string, callFunc CallFunc) {
+func RegisterCallFunc(cmd ServiceType, callFunc CallFunc) {
 	if _, ok := callFunctions[cmd]; ok {
-		logrus.Panic("call cmd already exist")
+		logger.Panic("call cmd already exist")
 	}
 	callFunctions[cmd] = callFunc
 }
 
-type event struct {
-	EventType string                 `json:"event_type"`
-	Data      map[string]interface{} `json:"data"`
+type Data interface {
 }
 
-type callResponse struct {
-	ID      int                    `json:"id"`
-	Error   Error                  `json:"error,omitempty"`
-	Result  map[string]interface{} `json:"result"`
-	Success bool                   `json:"success"`
+type Response struct {
+	ID      int64 `json:"id"`
+	Error   Error `json:"error,omitempty"`
+	Success bool  `json:"success"`
 }
 
 type Error struct {
@@ -78,22 +80,21 @@ type Error struct {
 	Message string     `json:"message"`
 }
 
-func (cr *callResponse) AddResult(key string, value interface{}) {
-	if cr.Result == nil {
-		cr.Result = make(map[string]interface{})
-	}
-	cr.Result[key] = value
+type Event struct {
+	EventType string `json:"event_type"`
 }
 
+// Message 服务端响应的消息
 type Message struct {
-	*callResponse
-	*event
-	Type MsgType `json:"type"`
+	*Response
+	*Event
+	Data interface{} `json:"data"`
+	Type MsgType     `json:"type"`
 }
 
-func NewResponse(id int) *Message {
+func NewResponse(id int64) *Message {
 	return &Message{
-		callResponse: &callResponse{
+		Response: &Response{
 			ID: id,
 		},
 		Type: MsgTypeResponse,
@@ -102,9 +103,8 @@ func NewResponse(id int) *Message {
 
 func NewEvent(eventType string) *Message {
 	return &Message{
-		event: &event{
+		Event: &Event{
 			EventType: eventType,
-			Data:      make(map[string]interface{}),
 		},
 		Type: MsgTypeEvent,
 	}

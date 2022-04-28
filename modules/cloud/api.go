@@ -1,14 +1,18 @@
 package cloud
 
 import (
+	"context"
 	errors2 "errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 
-	jsoniter "github.com/json-iterator/go"
-	"github.com/sirupsen/logrus"
+	"github.com/zhiting-tech/smartassistant/modules/api/utils/cloud"
 	"github.com/zhiting-tech/smartassistant/modules/config"
+	"github.com/zhiting-tech/smartassistant/pkg/http/httpclient"
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
+
+	jsoniter "github.com/json-iterator/go"
 )
 
 type DeviceType string
@@ -53,11 +57,19 @@ func SaveBrandLogos() {
 
 }
 
-func GetBrands() (brands []Brand, err error) {
+func GetBrandsWithContext(ctx context.Context) (brands []Brand, err error) {
 
 	url := fmt.Sprintf("%s/common/brands", config.GetConf().SmartCloud.URL())
-	logrus.Debug(url)
-	resp, err := http.Get(url)
+	logger.Debug(url)
+
+	var req *http.Request
+	req, err = http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return
+	}
+
+	var resp *http.Response
+	resp, err = httpclient.DefaultClient.Do(req)
 	if err != nil {
 		return
 	}
@@ -84,8 +96,8 @@ func GetBrands() (brands []Brand, err error) {
 	return
 }
 
-func GetBrandsMap() (brandsMap map[string]Brand, err error) {
-	brands, err := GetBrands()
+func GetBrandsMapWithContext(ctx context.Context) (brandsMap map[string]Brand, err error) {
+	brands, err := GetBrandsWithContext(ctx)
 	if err != nil {
 		return
 	}
@@ -101,10 +113,18 @@ type BrandInfo struct {
 	Plugins []Plugin `json:"plugins"`
 }
 
-func GetBrandInfo(brandName string) (brand BrandInfo, err error) {
+func GetBrandInfoWithContext(ctx context.Context, brandName string) (brand BrandInfo, err error) {
 	url := fmt.Sprintf("%s/common/brands/name/%s", config.GetConf().SmartCloud.URL(), brandName)
-	logrus.Debug(url)
-	resp, err := http.Get(url)
+	logger.Debug(url)
+
+	var req *http.Request
+	req, err = http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return
+	}
+
+	var resp *http.Response
+	resp, err = httpclient.DefaultClient.Do(req)
 	if err != nil {
 		return
 	}
@@ -126,16 +146,24 @@ func GetBrandInfo(brandName string) (brand BrandInfo, err error) {
 	}
 
 	any := jsoniter.Get(data, "data")
-	logrus.Debug(any.ToString())
+	logger.Debug(any.ToString())
 	any.ToVal(&brand)
 	err = any.LastError()
 	return
 }
 
-func GetPlugins() (plugins []Plugin, err error) {
+func GetPluginsWithContext(ctx context.Context) (plugins []Plugin, err error) {
 	url := fmt.Sprintf("%s/common/plugins", config.GetConf().SmartCloud.URL())
-	logrus.Debug(url)
-	resp, err := http.Get(url)
+	logger.Debug(url)
+
+	var req *http.Request
+	req, err = http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return
+	}
+
+	var resp *http.Response
+	resp, err = httpclient.DefaultClient.Do(req)
 	if err != nil {
 		return
 	}
@@ -161,11 +189,19 @@ func GetPlugins() (plugins []Plugin, err error) {
 	return
 }
 
-func GetPlugin(PluginUID string) (plugin Plugin, err error) {
+func GetPluginWithContext(ctx context.Context, PluginUID string) (plugin Plugin, err error) {
 	url := fmt.Sprintf("%s/common/plugins/uid/%s",
 		config.GetConf().SmartCloud.URL(), PluginUID)
-	logrus.Debug(url)
-	resp, err := http.Get(url)
+	logger.Debug(url)
+
+	var req *http.Request
+	req, err = http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return
+	}
+
+	var resp *http.Response
+	resp, err = httpclient.DefaultClient.Do(req)
 	if err != nil {
 		return
 	}
@@ -198,13 +234,21 @@ type Firmware struct {
 	Info    string `json:"info"`
 }
 
-// GetLatestFirmware 获取最新的固件
-func GetLatestFirmware(pluginID, model string) (firmware Firmware, err error) {
+// GetLatestFirmwareWithContext 获取最新的固件
+func GetLatestFirmwareWithContext(ctx context.Context, pluginID, model string) (firmware Firmware, err error) {
 
 	url := fmt.Sprintf("%s/common/plugins/uid/%s/model/%s/firmwares",
 		config.GetConf().SmartCloud.URL(), pluginID, model)
-	logrus.Debug(url)
-	resp, err := http.Get(url)
+	logger.Debug(url)
+
+	var req *http.Request
+	req, err = http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return
+	}
+
+	var resp *http.Response
+	resp, err = httpclient.DefaultClient.Do(req)
 	if err != nil {
 		return
 	}
@@ -233,5 +277,36 @@ func GetLatestFirmware(pluginID, model string) (firmware Firmware, err error) {
 		return firmwares[0], nil
 	}
 	err = errors2.New("no firmware found")
+	return
+}
+
+type App struct {
+	AppID  int    `json:"app_id"`
+	Name   string `json:"name"`
+	IsBind bool   `json:"is_bind"`
+	Img    string `json:"img"`
+	Link   string `json:"link"`
+}
+
+// GetAppList 获取第三方平台列表
+func GetAppList(ctx context.Context, areaID uint64) (apps []App, err error) {
+	path := fmt.Sprintf("apps?area_id=%d", areaID)
+	resp, err := cloud.DoWithContext(ctx, path, http.MethodGet, nil)
+	if err != nil {
+		return
+	}
+
+	any := jsoniter.Get(resp, "data", "apps")
+	any.ToVal(&apps)
+	err = any.LastError()
+
+	return
+}
+
+// UnbindApp 解绑第三方平台
+func UnbindApp(ctx context.Context, areaID uint64, appID int) (err error) {
+	path := fmt.Sprintf("apps/%d/areas/%d", appID, areaID)
+	_, err = cloud.DoWithContext(ctx, path, http.MethodDelete, nil)
+
 	return
 }

@@ -2,27 +2,30 @@ package job
 
 import (
 	"context"
-	cron "github.com/robfig/cron/v3"
+	"github.com/robfig/cron/v3"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
+	"sync"
 )
 
-type Server struct {
+var once sync.Once
+var jobServer *JobServer
+
+type JobServer struct {
+	Cron *cron.Cron
 }
 
-func NewJobServer() *Server {
-	return &Server{}
+func GetJobServer() *JobServer {
+	once.Do(func() {
+		jobServer = &JobServer{
+			Cron: cron.New(),
+		}
+	})
+	return jobServer
 }
 
-func (s *Server) Run(ctx context.Context) {
-	go func() {
-		// 实例化Cron定时器
-		crontab := cron.New()
-		// 添加定时任务, * * * * * 是 crontab,表示每天23点59分执行一次 定时删除超过七天的日志
-		crontab.AddFunc("59 23 * * *", LogRemove)
-		// 启动定时器
-		crontab.Start()
-	}()
-
+func (s *JobServer) Run(ctx context.Context) {
+	s.Cron.AddFunc("59 23 * * *", LogRemove)
+	s.Cron.Start()
 	<-ctx.Done()
 	logger.Warning("job server stopped")
 }

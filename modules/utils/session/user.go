@@ -2,9 +2,12 @@ package session
 
 import (
 	"github.com/gin-gonic/gin"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/types"
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
+
 	"strconv"
 	"time"
 )
@@ -48,6 +51,7 @@ func GetUserByToken(c *gin.Context) *User {
 	accessToken := c.GetHeader(types.SATokenKey)
 	ti, err := oauth.GetOauthServer().Manager.LoadAccessToken(accessToken)
 	if err != nil {
+		logger.Errorf("load access token err: %s", err)
 		return nil
 	}
 
@@ -56,6 +60,7 @@ func GetUserByToken(c *gin.Context) *User {
 
 	area, err := entity.GetAreaByID(user.AreaID)
 	if err != nil {
+		logger.Errorf("GetAreaByID err: %s", err)
 		return nil
 	}
 

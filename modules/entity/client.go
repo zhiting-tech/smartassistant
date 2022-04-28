@@ -2,42 +2,39 @@ package entity
 
 import (
 	"github.com/twinj/uuid"
-	"github.com/zhiting-tech/smartassistant/modules/config"
 	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"github.com/zhiting-tech/smartassistant/pkg/rand"
 	"gopkg.in/oauth2.v3"
 	"gorm.io/gorm"
-	"strings"
+	"gorm.io/gorm/clause"
+)
+
+const (
+	AreaClient = iota + 1
+	SCClient
 )
 
 type Client struct {
 	ID           int
-	Name         string `gorm:"UniqueIndex"`
-	ClientID     string `gorm:"UniqueIndex"`
-	ClientSecret string `gorm:"UniqueIndex"`
+	AreaID       uint64 `gorm:"UniqueIndex:aid_type"`
+	ClientID     string
+	ClientSecret string
 	GrantType    string
 	AllowScope   string // 允许客户端申请的权限
+	Type         int    `gorm:"UniqueIndex:aid_type"`
 }
 
 func (c Client) TableName() string {
 	return "clients"
 }
 
-func GetDefaultScope() (scope string) {
-	scopeList := make([]string, 0)
-	for k := range types.Scopes {
-		scopeList = append(scopeList, k)
-	}
-	return strings.Join(scopeList, ",")
-}
-
 // CreateClient 创建应用
-func CreateClient(grantType, allowScope, name string) (client Client, err error) {
+func CreateClient(grantType, allowScope string, clientType int) (client Client, err error) {
 	client = Client{
 		GrantType:  getAllowGrantType(grantType),
 		AllowScope: allowScope,
-		Name:       name,
+		Type:       clientType,
 	}
 
 	if err = GetDB().FirstOrCreate(&client).Error; err != nil {
@@ -64,24 +61,29 @@ func getAllowGrantType(grantType string) string {
 }
 
 // InitClient 初始化Client
-func InitClient() (err error) {
+func InitClient(areaID uint64) (err error) {
 	var clients = make([]Client, 0)
 	saClient := Client{
-		Name:       config.GetConf().SmartAssistant.ID,
 		GrantType:  string(oauth2.Implicit) + "," + string(oauth2.PasswordCredentials) + "," + string(oauth2.Refreshing),
-		AllowScope: GetDefaultScope(),
+		AllowScope: types.WithScopes(types.ScopeAll),
+		AreaID:     areaID,
+		Type:       AreaClient,
 	}
 
 	scClient := Client{
-		Name:       config.GetConf().SmartCloud.Domain,
 		GrantType:  string(oauth2.ClientCredentials),
-		AllowScope: GetDefaultScope(),
+		Type:       SCClient,
+		AreaID:     areaID,
+		AllowScope: types.WithScopes(types.ScopeGetTokenBySC),
 	}
 
 	clients = append(clients, saClient, scClient)
 
 	for _, client := range clients {
-		if err = GetDB().FirstOrCreate(&client, Client{Name: client.Name}).Error; err != nil {
+		if err = GetDB().Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "area_id"}, {Name: "type"}},
+			DoUpdates: clause.AssignmentColumns([]string{"grant_type", "allow_scope"}),
+		}).Create(&client).Error; err != nil {
 			err = errors.Wrap(err, errors.InternalServerErr)
 			return
 		}
@@ -90,8 +92,8 @@ func InitClient() (err error) {
 }
 
 // GetSAClient 获取SAClient
-func GetSAClient() (client Client, err error) {
-	if err = GetDB().First(&client, "name=?", config.GetConf().SmartAssistant.ID).Error; err != nil {
+func GetSAClient(areaID uint64) (client Client, err error) {
+	if err = GetDB().First(&client, "type=? and area_id=?", AreaClient, areaID).Error; err != nil {
 		err = errors.Wrap(err, errors.InternalServerErr)
 		return
 	}
@@ -99,8 +101,16 @@ func GetSAClient() (client Client, err error) {
 }
 
 // GetSCClient 获取SCClient
-func GetSCClient() (client Client, err error) {
-	if err = GetDB().First(&client, "name=?", config.GetConf().SmartCloud.Domain).Error; err != nil {
+func GetSCClient(areaID uint64) (client Client, err error) {
+	if err = GetDB().First(&client, "type=? and area_id=?", SCClient, areaID).Error; err != nil {
+		err = errors.Wrap(err, errors.InternalServerErr)
+		return
+	}
+	return
+}
+
+func GetClientByAreaID(areaID uint64) (client []Client, err error) {
+	if err = GetDB().Where("area_id=?", areaID).Find(&client).Error; err != nil {
 		err = errors.Wrap(err, errors.InternalServerErr)
 		return
 	}

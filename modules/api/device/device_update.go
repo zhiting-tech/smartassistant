@@ -18,6 +18,7 @@ import (
 // UpdateDeviceReq 修改设备接口请求参数
 type UpdateDeviceReq struct {
 	Name         *string `json:"name"`
+	LogoType     *int    `json:"logo_type"`
 	LocationID   int     `json:"location_id"`
 	DepartmentID int     `json:"department_id"`
 }
@@ -42,6 +43,15 @@ func (req *UpdateDeviceReq) Validate() (updateDevice entity.Device, err error) {
 		} else {
 			updateDevice.Name = *req.Name
 		}
+	}
+
+	if req.LogoType != nil {
+		_, ok := types.GetLogo(types.LogoType(*req.LogoType))
+		if types.LogoType(*req.LogoType) != types.NormalLogo && !ok {
+			err = errors.New(status.DeviceLogoNotExist)
+			return
+		}
+		updateDevice.LogoType = req.LogoType
 	}
 	return
 }
@@ -103,7 +113,7 @@ func UpdateDevice(c *gin.Context) {
 		return
 	}
 
-	if req.LocationID == 0 && entity.IsHome(curArea.AreaType){
+	if req.LocationID == 0 && entity.IsHome(curArea.AreaType) {
 		// 未勾选房间, 设备与房间解绑
 		if err = entity.UnBindLocationDevice(id); err != nil {
 			return

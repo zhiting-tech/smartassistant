@@ -1,6 +1,8 @@
 package brand
 
 import (
+	"context"
+
 	"github.com/gin-gonic/gin"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/cloud"
@@ -64,11 +66,11 @@ func ListAddedBrands() (brandInfos []BrandInfo, err error) {
 	return
 }
 
-// ListBrands 获取所有品牌
-func ListBrands() (brandInfos []BrandInfo, err error) {
+// ListBrandsWithContext 获取所有品牌
+func ListBrandsWithContext(ctx context.Context) (brandInfos []BrandInfo, err error) {
 
 	var brands []cloud.Brand
-	brands, err = cloud.GetBrands()
+	brands, err = cloud.GetBrandsWithContext(ctx)
 	if err != nil {
 		return
 	}
@@ -114,6 +116,6 @@ func List(c *gin.Context) {
 	if req.Type == typeAdded {
 		resp.Brands, err = ListAddedBrands()
 	} else {
-		resp.Brands, err = ListBrands()
+		resp.Brands, err = ListBrandsWithContext(c.Request.Context())
 	}
 }

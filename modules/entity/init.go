@@ -4,17 +4,17 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
 	logger1 "github.com/zhiting-tech/smartassistant/pkg/logger"
 
-	"path/filepath"
-
-	"github.com/zhiting-tech/smartassistant/modules/config"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	"github.com/zhiting-tech/smartassistant/modules/config"
 )
 
 var db *gorm.DB
@@ -23,7 +23,8 @@ var once sync.Once
 var Tables []interface{} = []interface{}{
 	Device{}, Location{}, Area{}, Role{}, RolePermission{},
 	User{}, UserRole{}, Scene{}, SceneCondition{},
-	SceneTask{}, TaskLog{}, GlobalSetting{}, PluginInfo{}, Client{}, Department{}, DepartmentUser{},
+	SceneTask{}, TaskLog{}, GlobalSetting{}, PluginInfo{}, Client{},
+	Department{}, DepartmentUser{}, DeviceState{}, FileInfo{}, BackupInfo{},
 }
 
 func GetDB() *gorm.DB {

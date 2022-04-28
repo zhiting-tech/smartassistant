@@ -1,9 +1,8 @@
 package entity
 
 import (
-	"fmt"
-	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/attribute"
 	"gorm.io/gorm"
+	"strconv"
 
 	"github.com/zhiting-tech/smartassistant/modules/types"
 )
@@ -27,17 +26,13 @@ func (p RolePermission) TableName() string {
 
 // IsDeviceControlPermit 判断用户是否有该设备的某个控制权限
 func IsDeviceControlPermit(userID, deviceID int, attr Attribute) bool {
-	return IsDeviceControlPermitByAttr(userID, deviceID, attr.InstanceID, attr.Attribute.Attribute)
-}
-
-func PluginDeviceAttr(instanceID int, attr string) string {
-	return fmt.Sprintf("%d_%s", instanceID, attr)
+	return IsDeviceControlPermitByAttr(userID, deviceID, attr.Attribute.AID)
 }
 
 // IsDeviceControlPermitByAttr 判断用户是否有该设备的某个控制权限
-func IsDeviceControlPermitByAttr(userID, deviceID, instanceID int, attr string) bool {
+func IsDeviceControlPermitByAttr(userID, deviceID int, aid int) bool {
 	target := types.DeviceTarget(deviceID)
-	return judgePermit(userID, "control", target, PluginDeviceAttr(instanceID, attr))
+	return judgePermit(userID, types.ActionControl, target, strconv.Itoa(aid))
 }
 
 type Attr struct {
@@ -61,7 +56,7 @@ func (up UserPermissions) IsDeviceControlPermit(deviceID int) bool {
 		return true
 	}
 	for _, p := range up.ps {
-		if p.Action == "control" &&
+		if p.Action == types.ActionControl &&
 			p.Target == types.DeviceTarget(deviceID) {
 			return true
 		}
@@ -70,37 +65,17 @@ func (up UserPermissions) IsDeviceControlPermit(deviceID int) bool {
 }
 
 // IsDeviceAttrControlPermit 判断设备的属性是否有权限
-func (up UserPermissions) IsDeviceAttrControlPermit(deviceID, instanceID int, attr string) bool {
+func (up UserPermissions) IsDeviceAttrControlPermit(deviceID int, aid int) bool {
 	if up.isOwner {
 		return true
 	}
 	for _, p := range up.ps {
-		if p.Action == "control" &&
+		if p.Action == types.ActionControl &&
 			p.Target == types.DeviceTarget(deviceID) &&
-			p.Attribute == PluginDeviceAttr(instanceID, attr) {
+			p.Attribute == strconv.Itoa(aid) {
 			return true
 		}
 	}
-	return false
-}
-
-// IsDeviceAttrPermit 判断设备的属性是否有权限
-func (up UserPermissions) IsDeviceAttrPermit(deviceID int, attr Attribute) bool {
-	if up.isOwner {
-		return true
-	}
-	// 如果设备的属性是只读，例如传感器，则默认有权限（这种属性，不需要权限控制）
-	if attr.Permission == attribute.AttrPermissionOnlyRead {
-		return true
-	}
-	for _, p := range up.ps {
-		if p.Action == "control" &&
-			p.Target == types.DeviceTarget(deviceID) &&
-			p.Attribute == PluginDeviceAttr(attr.InstanceID, attr.Attribute.Attribute) {
-			return true
-		}
-	}
-
 	return false
 }
 

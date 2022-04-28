@@ -12,7 +12,7 @@ func TestAddDevice(t *testing.T) {
 
 	var testSADevice = Device{
 		ID:         1,
-		Identity:   "666",
+		IID:        "666",
 		Model:      types.SaModel,
 		PluginID:   "1",
 		LocationID: 1,
@@ -21,14 +21,14 @@ func TestAddDevice(t *testing.T) {
 
 	var testDevice2 = Device{
 		ID:         2,
-		Identity:   "678",
+		IID:        "678",
 		LocationID: 1,
 		OwnerID:    2,
 	}
 
-	var errorIdentityDevice = Device{
+	var errorIIDDevice = Device{
 		ID:         3,
-		Identity:   "666",
+		IID:        "666",
 		LocationID: 1,
 		OwnerID:    2,
 	}
@@ -42,7 +42,7 @@ func TestAddDevice(t *testing.T) {
 	err = AddDevice(&testSADevice, GetDB())
 	ast.Error(err, "add exist device error")
 
-	err = AddDevice(&errorIdentityDevice, GetDB())
+	err = AddDevice(&errorIIDDevice, GetDB())
 	ast.Error(err, "add error device error")
 }
 
@@ -69,7 +69,7 @@ func TestGetDevice(t *testing.T) {
 	ast := assert.New(t)
 
 	const noExistDeviceID = 999
-	const noExistIdentity = "999"
+	const noExistIID = "999"
 
 	devices, err := GetDevices()
 	ast.NoError(err, "get devices error: %v", err)
@@ -93,7 +93,7 @@ func TestGetDevice(t *testing.T) {
 	device, err = GetPluginDevice("666")
 	ast.NoError(err, "get device by id error: %v", err)
 	ast.NotEmpty(device)
-	device, err = GetPluginDevice(noExistIdentity)
+	device, err = GetPluginDevice(noExistIID)
 	ast.Error(err, "get device by id error")
 	ast.Empty(device)
 }
@@ -106,7 +106,7 @@ func TestUpdateDevice(t *testing.T) {
 
 	var updateDevice = Device{
 		ID:         2,
-		Identity:   "678",
+		IID:        "678",
 		LocationID: 1,
 		OwnerID:    newOwnerID,
 	}

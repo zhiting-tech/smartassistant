@@ -3,18 +3,20 @@ package api
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
+	"path/filepath"
 	"time"
 
-	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
-
-	"github.com/zhiting-tech/smartassistant/modules/websocket"
-
-	"github.com/gin-gonic/gin"
 	"github.com/zhiting-tech/smartassistant/modules/api/middleware"
 	"github.com/zhiting-tech/smartassistant/modules/config"
+	"github.com/zhiting-tech/smartassistant/modules/logreplay"
+	"github.com/zhiting-tech/smartassistant/modules/types"
+	"github.com/zhiting-tech/smartassistant/modules/utils/url"
+	"github.com/zhiting-tech/smartassistant/modules/websocket"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
+
+	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 type HttpServer struct {
@@ -26,17 +28,37 @@ func NewHttpServer(ws gin.HandlerFunc) *HttpServer {
 	conf := config.GetConf()
 	r := gin.Default()
 
-	// 记录请求日志
-	r.Use(otelgin.Middleware("api"), middleware.AccessLog())
+	versionParamKey := "_version"
+
 	apiGroup := r.Group("api")
+	apiGroup.Use(
+		otelgin.Middleware("api"),
+		// 记录请求日志
+		middleware.AccessLog(),
+		middleware.VersionMiddleware(versionParamKey, types.Version, types.MinVersion),
+	)
+	apiVersionGroup := apiGroup.Group("/:" + versionParamKey)
+	loadModules(apiVersionGroup)
+	loadModules(apiGroup)
+
 	// 注册websocket命令
 	websocket.RegisterCmd()
-	r.GET("/ws", middleware.RequireToken, ws)
-	loadModules(apiGroup)
-	apiGroup.Static(fmt.Sprintf("static/%s/sa", conf.SmartAssistant.ID), "./static")
+	websocketGroup := r.Group("/ws")
+	websocketGroup.Use(otelgin.Middleware("websocket"), middleware.RequireToken)
+	websocketGroup.GET("", ws)
+
+	r.GET("/log", logreplay.LogReceiver)
+
+	// 静态文件
+	r.Static(url.BackendStaticPath(), "./static")
+	r.Static(url.FilePath(),
+		filepath.Join(
+			config.GetConf().SmartAssistant.RuntimePath,
+			"run", "smartassistant", "file"),
+	)
 
 	// 代理插件
-	apiGroup.Any("/plugin/:plugin/*path", middleware.ProxyToPlugin)
+	r.Any("/plugin/:plugin/*path", middleware.ProxyToPlugin)
 
 	return &HttpServer{
 		ginEngine: r,

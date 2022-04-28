@@ -2,12 +2,13 @@ package plugin
 
 import (
 	"encoding/json"
-	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 
-	"github.com/sirupsen/logrus"
+	"github.com/zhiting-tech/smartassistant/modules/entity"
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
+
 	"github.com/zhiting-tech/smartassistant/modules/plugin/docker"
 	"github.com/zhiting-tech/smartassistant/pkg/archive"
 )
@@ -21,9 +22,9 @@ func LoadPluginFromZip(path string, areaID uint64) (plg Plugin, err error) {
 		return
 	}
 
-	logrus.Debug(dstDir)
+	logger.Debug(dstDir)
 	dstDir, _ = filepath.Abs(dstDir)
-	logrus.Debug(dstDir)
+	logger.Debug(dstDir)
 	pluginPath := pluginBasePath(dstDir)
 	plgConf, err := LoadPluginConfig(pluginPath)
 	if err != nil {
@@ -57,22 +58,22 @@ func LoadPluginFromZip(path string, areaID uint64) (plg Plugin, err error) {
 				errInfo = err.Error()
 			}
 			if uerr := entity.UpdatePluginInfo(plgConf.ID(), entity.PluginInfo{Status: status, ErrorInfo: errInfo}); uerr != nil {
-				logrus.Errorf("UpdatePluginStatus err: %s", uerr.Error())
+				logger.Errorf("UpdatePluginStatus err: %s", uerr.Error())
 			}
 		}()
 
 		_, err = BuildFromDir(pluginPath, plgConf.ID())
 		if err != nil {
-			logrus.Errorf("build image err: %v\n", err)
+			logger.Errorf("build image err: %v\n", err)
 			return
 		}
 
 		plg = NewFromEntity(pi)
 		if err = plg.Up(); err != nil {
-			logrus.Errorf("up image err: %v\n", err)
+			logger.Errorf("up image err: %v\n", err)
 			return
 		}
-		logrus.Println("image build success")
+		logger.Println("image build success")
 	}()
 
 	return

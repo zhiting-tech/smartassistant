@@ -1,12 +1,16 @@
 package device
 
 import (
+	"sort"
+
 	"github.com/gin-gonic/gin"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/plugin"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
+	"github.com/zhiting-tech/smartassistant/modules/utils/session"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
-	"sort"
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
 )
 
 type MinorResp struct {
@@ -41,10 +45,10 @@ var minorTypes = map[plugin.DeviceType]minorType{
 	plugin.TypeDownLight:        {"简射灯", plugin.TypeLight},
 	plugin.TypeMagneticRailLamp: {"磁吸轨道灯", plugin.TypeLight},
 
-	plugin.TypeOneKeySwitch:    {"单键开关", plugin.TypeSwitch},
-	plugin.TypeTwoKeySwitch:    {"双键开关", plugin.TypeSwitch},
-	plugin.TypeThreeKeySwitch:  {"三键开关", plugin.TypeSwitch},
-	plugin.TypeDWirelessSwitch: {"无线开关", plugin.TypeSwitch},
+	plugin.TypeOneKeySwitch:   {"单键开关", plugin.TypeSwitch},
+	plugin.TypeTwoKeySwitch:   {"双键开关", plugin.TypeSwitch},
+	plugin.TypeThreeKeySwitch: {"三键开关", plugin.TypeSwitch},
+	plugin.TypeWirelessSwitch: {"无线开关", plugin.TypeSwitch},
 
 	plugin.TypeConverter:  {"转换器", plugin.TypeOutlet},
 	plugin.TypeWallPlug:   {"入墙插座", plugin.TypeOutlet},
@@ -58,7 +62,7 @@ var minorTypes = map[plugin.DeviceType]minorType{
 	plugin.TypePeepholeDoorbell: {"猫眼门铃", plugin.TypeSecurity},
 	plugin.TypeDoorLock:         {"门锁", plugin.TypeSecurity},
 
-	plugin.TypeCurtain:      	 {"窗帘电机", plugin.TypeLifeElectric},
+	plugin.TypeCurtain: {"窗帘电机", plugin.TypeLifeElectric},
 
 	plugin.TypeTemperatureAndHumiditySensor: {"温湿度传感器", plugin.TypeSensor},
 	plugin.TypeHumanSensors:                 {"人体传感器", plugin.TypeSensor},
@@ -92,19 +96,31 @@ func MinorTypeList(c *gin.Context) {
 		return
 	}
 
+	var token string
+	u := session.Get(c)
+	if u != nil {
+		token = u.Token
+	}
 	deviceConfigs := plugin.GetGlobalClient().DeviceConfigs()
 	m := make(map[plugin.DeviceType][]ModelDevice)
 	for _, d := range deviceConfigs {
 		if d.Provisioning == "" { // 没有配置置网页则忽略
 			continue
 		}
-
+		// 拼接token和插件id辅助插件实现websocket请求
+		provisioning, err := d.WrapProvisioning(token, d.PluginID)
+		if err != nil {
+			logger.Error(err)
+			continue
+		}
 		md := ModelDevice{
-			Name:         getName(d.Type),
-			Model:        d.Model,
-			Logo:         plugin.LogoURL(c.Request, d.PluginID, d.Model, d.Logo), // 根据配置拼接插件中的图片地址
-			Provisioning: d.Provisioning,
+			Name:  d.Name,
+			Model: d.Model,
+			Logo: plugin.PluginTargetURL(c.Request, d.PluginID,
+				d.Model, d.Logo), // 根据配置拼接插件中的图片地址
+			Provisioning: provisioning,
 			PluginID:     d.PluginID,
+			Protocol:     d.Protocol,
 		}
 		if req.Type == minorTypes[d.Type].ParentType || req.Type == d.Type {
 			m[d.Type] = append(m[d.Type], md)
@@ -120,16 +136,6 @@ func MinorTypeList(c *gin.Context) {
 	}
 
 	sort.Sort(resp.Types) // 按拼音首字母A-Z排序
-}
-
-func getName(dt plugin.DeviceType) (name string) {
-	name = minorTypes[dt].Name
-	if minorTypes[dt].Name != "" {
-		return
-	}
-	name = majorTypes[dt]
-
-	return
 }
 
 func (t MinorTypes) Len() int {

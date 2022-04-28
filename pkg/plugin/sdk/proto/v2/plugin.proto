@@ -1,0 +1,84 @@
+syntax = "proto3";
+package zhiting.sa.plugin.v2;
+option go_package = "../proto";
+import "google/protobuf/empty.proto";
+
+service Plugin {
+  // Discover 发现设备
+  rpc Discover (google.protobuf.Empty) returns (stream device);
+  // StateChange 监听所有设备状态变化
+  rpc Subscribe (google.protobuf.Empty) returns (stream event);
+  rpc HealthCheck (healthCheckReq) returns (healthCheckResp);
+
+  rpc OTA(OTAReq)  returns (stream OTAResp);
+
+  rpc Connect (AuthReq) returns (GetInstancesResp);
+  rpc Disconnect (AuthReq) returns (google.protobuf.Empty);
+
+  // GetInstances 获取设备所有实例
+  rpc GetInstances (GetInstancesReq) returns (GetInstancesResp);
+  // SetAttributes 设置属性
+  rpc SetAttributes (SetAttributesReq) returns (SetAttributesResp);
+}
+
+message OTAReq {
+  string iid = 1;
+  string firmware_url = 2;
+}
+
+message OTAResp {
+  string iid = 1;
+  int32 step = 2;
+}
+
+message AuthReq {
+  string iid = 1;
+  bytes params = 2;
+}
+
+message Instance {
+  string iid = 1;
+  int32 instance_id = 2;
+  bytes attributes = 3;
+  string type = 4;
+}
+
+message SetAttributesReq {
+  bytes data = 1;
+}
+
+message SetAttributesResp {
+  bool success = 1;
+  string error = 2;
+}
+
+message device {
+  string iid = 1;
+  string model = 2;
+  string manufacturer = 3;
+  bool authRequired = 4;
+  bytes authParams = 5;
+}
+
+message event {
+  string type = 1; // 事件类型
+  bytes data = 2;
+}
+
+message healthCheckReq {
+  string iid = 1;
+}
+
+message healthCheckResp {
+  string iid = 1;
+  bool online = 2;
+}
+message GetInstancesReq{
+  string iid = 1;
+}
+message GetInstancesResp{
+  bool success = 1;
+  string error = 2;
+  bytes instances = 3;
+  bool ota_support = 4;
+}

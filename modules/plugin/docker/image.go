@@ -20,7 +20,7 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/pkg/archive"
-	"github.com/sirupsen/logrus"
+
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
 )
 
@@ -190,12 +190,12 @@ func (c *Client) BuildFromTar(tar io.Reader, tag string) (imageID string, err er
 		var res LineResult
 		json.Unmarshal(scanner.Bytes(), &res)
 		if res.Error != "" {
-			logrus.Error("err: ", res.Error, res.ErrorDetail.Message)
+			logger.Error("err: ", res.Error, res.ErrorDetail.Message)
 			return "", errors2.New(res.Error)
 		}
 		if strings.HasPrefix(res.Stream, "Successfully built") {
 			imageID = strings.TrimRight(strings.TrimPrefix(res.Stream, "Successfully built "), "\n")
-			logrus.Debug("image id:", imageID)
+			logger.Debug("image id:", imageID)
 		}
 	}
 

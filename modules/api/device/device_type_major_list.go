@@ -1,11 +1,13 @@
 package device
 
 import (
+	"sort"
+
 	"github.com/gin-gonic/gin"
 	"github.com/mozillazg/go-pinyin"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/plugin"
-	"sort"
 )
 
 type ModelDevice struct {
@@ -15,6 +17,8 @@ type ModelDevice struct {
 	Logo         string `json:"logo"`         // logo地址
 	Provisioning string `json:"provisioning"` // 配置页地址
 	PluginID     string `json:"plugin_id"`
+
+	Protocol string `json:"protocol"` // 连接云端的协议类型，tcp/mqtt
 }
 
 type Type struct {
@@ -53,7 +57,7 @@ func MajorTypeList(c *gin.Context) {
 	deviceConfigs := plugin.GetGlobalClient().DeviceConfigs()
 	m := make(map[plugin.DeviceType]string, 0)
 	for _, d := range deviceConfigs {
-		if d.Provisioning == "" { //没有配置置网页则忽略
+		if d.Provisioning == "" { // 没有配置置网页则忽略
 			continue
 		}
 
