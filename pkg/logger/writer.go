@@ -114,8 +114,10 @@ func (w *remoteWriter) run(ctx context.Context) {
 func (w *remoteWriter) untilConnectToRemoteWithContext(ctx context.Context) (ws *websocket.Conn) {
 	var (
 		hosts []string = []string{
-			"zt-nginx:9020",
-			"127.0.0.1:9020",
+			// "zt-nginx:9020",
+			// "127.0.0.1:9020",
+			"127.0.0.1:37966",
+			"smartassistant:37966",
 		}
 		wait = 10 * time.Second
 		err  error

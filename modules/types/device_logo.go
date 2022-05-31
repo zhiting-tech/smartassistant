@@ -1,5 +1,11 @@
 package types
 
+import (
+	"net/http"
+
+	"github.com/zhiting-tech/smartassistant/modules/utils/url"
+)
+
 type DeviceLogo struct {
 	LogoType LogoType
 	Name     string
@@ -36,10 +42,18 @@ var (
 
 	NormalLogoInfo = DeviceLogo{
 		LogoType: NormalLogo,
-		Name: "设备图片",
+		Name:     "设备图片",
 	}
 )
 
+func LogoFromLogoType(logoType LogoType, httpReq *http.Request) (logoUrl, logo string) {
+
+	if logoInfo, ok := GetLogo(logoType); ok {
+		logoUrl = url.ImageUrl(httpReq, logoInfo.FileName)
+		logo = url.ImagePath(logoInfo.FileName)
+	}
+	return
+}
 
 func GetLogo(logoType LogoType) (DeviceLogo, bool) {
 	for _, l := range DeviceLogos {

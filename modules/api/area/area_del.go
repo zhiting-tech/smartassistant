@@ -65,7 +65,6 @@ func ProcessDelArea(c *gin.Context, areaID uint64, isDelCloudDiskFile bool) (res
 		return
 	}
 
-	// FIXME 云端没有网盘
 	result, err := clouddisk.DelAreaCloudDisk(c, isDelCloudDiskFile, areaID)
 	if err != nil {
 		return

@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/device"
 	"github.com/zhiting-tech/smartassistant/modules/api/middleware"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
@@ -24,6 +25,7 @@ func RegisterLocationRouter(r gin.IRouter) {
 	locationGroup.DELETE("", middleware.RequirePermission(types.LocationDel), DelLocation)
 	locationGroup.GET("", middleware.RequirePermission(types.LocationGet), InfoLocation)
 	locationGroup.GET("/devices", device.ListLocationDevices)
+	locationGroup.PUT("/devices", middleware.RequirePermission(types.DeviceUpdateOrder), updateLocationDevices)
 
 	locationsGroup.GET("", ListLocation)
 	locationsGroup.POST("", middleware.RequirePermission(types.LocationAdd), AddLocation)

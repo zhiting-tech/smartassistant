@@ -37,6 +37,10 @@ func ControlPermissions(d entity.Device, withHidden bool) ([]types.Permission, e
 		}
 		res = append(res, p)
 	}
+	tm, _ := d.GetThingModel()
+	if tm.OTASupport {
+		res = append(res, types.NewDeviceFwUpgrade(d.ID))
+	}
 	return res, nil
 }
 
@@ -45,7 +49,7 @@ func Permissions(d entity.Device) (ps []types.Permission, err error) {
 	ps = append(ps, ManagePermissions(d)...)
 	ps = append(ps, types.NewDeviceUpdate(d.ID))
 
-	if d.Model == types.SaModel {
+	if d.IsSa() {
 		return
 	}
 
@@ -63,10 +67,9 @@ func Permissions(d entity.Device) (ps []types.Permission, err error) {
 // ManagePermissions 设备的管理权限
 func ManagePermissions(d entity.Device) []types.Permission {
 	var permissions = make([]types.Permission, 0)
-	// TODO 设备的固件升级功能是否能和设备的其他控制属性一样从插件获取？
-	if d.Model == types.SaModel {
-		permissions = append(permissions, types.NewDeviceManage(d.ID, "固件升级", types.FwUpgrade))
-		permissions = append(permissions, types.NewDeviceManage(d.ID, "软件升级", types.SoftwareUpgrade))
+	if d.IsSa() {
+		permissions = append(permissions, types.NewDeviceFwUpgrade(d.ID))
+		permissions = append(permissions, types.NewDeviceSoftwareUpgrade(d.ID))
 	}
 	return permissions
 }

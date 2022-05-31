@@ -209,28 +209,6 @@ func (p *Server) discovering() {
 	}
 }
 
-func (p Server) autoConnect(d Device) {
-	defer func() {
-		if r := recover(); r != nil {
-			logrus.Errorf("handle discoverd device panic: %v", r)
-		}
-	}()
-	if err := p.Manager.InitOrUpdateDevice(d); err != nil {
-		logrus.Errorf("init or update device err %s", err.Error())
-		return
-	}
-	// 需要认证且没有认证，则不自动连接
-	if v, ok := d.(AuthDevice); ok && !v.IsAuth() {
-		return
-	}
-	if err := p.Manager.Connect(d.Info().IID, nil); err != nil {
-		logrus.Errorf("connect err: %s", err)
-		p.Manager.devices.Delete(d.Info().IID)
-		return
-	}
-	return
-}
-
 func (p *Server) Init() {
 	p.pluginRouter.Group("html").Static("", p.staticDir)
 	p.pluginRouter.StaticFile("config.json", p.configFile)
@@ -247,7 +225,6 @@ func (p *Server) Init() {
 	archiveAPI := fmt.Sprintf("resources/archive/%s", fileName)
 	p.pluginRouter.StaticFile(archiveAPI, fileName)
 
-	go p.discovering()
 }
 
 func Exist(name string) bool {
@@ -328,7 +305,10 @@ func (p *Server) discover(ctx context.Context) {
 	go func() {
 		for d := range devices {
 			dd = append(dd, d)
-			go p.autoConnect(d)
+			if err := p.Manager.InitOrUpdateDevice(d); err != nil {
+				logrus.Errorf("init or update device err %s", err.Error())
+				return
+			}
 		}
 	}()
 	logrus.Debug("discovering...")

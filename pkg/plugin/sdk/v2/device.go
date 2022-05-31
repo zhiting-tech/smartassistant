@@ -13,6 +13,9 @@ type DeviceInfo struct {
 
 type Device interface {
 
+	// Address 设备地址，用来判断已添加设备是否变更了ip和端口，是的话回断掉旧的，连接新的
+	Address() string
+
 	// Connect 连接设备
 	Connect() error
 

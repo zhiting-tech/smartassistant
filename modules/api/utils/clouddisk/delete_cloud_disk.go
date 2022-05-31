@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	errors2 "errors"
 	"fmt"
+	"github.com/zhiting-tech/smartassistant/modules/api/utils/cloud"
 	"io/ioutil"
 	"net/http"
 	"sync"
@@ -18,7 +19,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/zhiting-tech/smartassistant/modules/api/extension"
-	"github.com/zhiting-tech/smartassistant/modules/api/utils/cloud"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/plugin/docker"
 	"github.com/zhiting-tech/smartassistant/modules/types"
@@ -159,11 +159,16 @@ func DelAreaWithContext(ctx context.Context, areaID uint64) (err error) {
 	if err != nil {
 		return
 	}
+
+	if err = cloud.RemoveSAWithContext(ctx, areaID); err != nil {
+		return
+	}
+
 	if err = entity.DelAreaByID(areaID); err != nil {
 		err = errors.Wrap(err, errors.InternalServerErr)
 		return
 	}
-	cloud.RemoveSAWithContext(ctx, areaID)
+
 	for _, p := range plugins {
 		if err2 := docker.GetClient().StopContainer(p.Image); err2 != nil {
 			logger.Warnf("del area stop container %s", err2)

@@ -1,7 +1,10 @@
 package department
 
 import (
+	"strconv"
+
 	"github.com/gin-gonic/gin"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/device"
 	"github.com/zhiting-tech/smartassistant/modules/api/middleware"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
@@ -10,7 +13,6 @@ import (
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
-	"strconv"
 )
 
 // RegisterDepartmentRouter 注册与部门相关的路由及其处理函数
@@ -23,6 +25,7 @@ func RegisterDepartmentRouter(r gin.IRouter) {
 	departmentGroup.GET("", middleware.RequirePermission(types.DepartmentGet), InfoDepartment)
 	departmentGroup.POST("/users", middleware.RequirePermission(types.DepartmentAddUser), AddDepartmentUser)
 	departmentGroup.GET("/devices", device.ListLocationDevices)
+	departmentGroup.PUT("/devices", middleware.RequirePermission(types.DeviceUpdateOrder), updateDepartmentDevices)
 
 	departmentsGroups.GET("", ListDepartment)
 	departmentsGroups.POST("", middleware.RequirePermission(types.DepartmentAdd), AddDepartment)

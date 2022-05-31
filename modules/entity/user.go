@@ -2,12 +2,14 @@ package entity
 
 import (
 	errors2 "errors"
+	"time"
+
+	"gorm.io/gorm"
+
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/modules/utils/hash"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"github.com/zhiting-tech/smartassistant/pkg/rand"
-	"gorm.io/gorm"
-	"time"
 )
 
 type User struct {
@@ -26,6 +28,14 @@ type User struct {
 	Area               Area   `gorm:"constraint:OnDelete:CASCADE;"`
 	PasswordUpdateTime time.Time
 	Deleted            gorm.DeletedAt
+
+	CommonDevices []Device `gorm:"many2many:user_common_devices"`
+}
+
+type UserCommonDevice struct {
+	ID       int `gorm:"primaryKey"`
+	UserID   int `gorm:"uniqueIndex:user_device"`
+	DeviceID int `gorm:"uniqueIndex:user_device"`
 }
 
 type UserInfo struct {
@@ -154,4 +164,73 @@ func GetUserByIDAndAreaID(uID int, areaID uint64) (user User, err error) {
 		}
 	}
 	return
+}
+
+func GetUserCommonDevices(userID int) (devices []Device, err error) {
+
+	user := User{ID: userID}
+	if err = GetDB().Model(&user).Order("user_common_devices.id").Association("CommonDevices").
+		Find(&devices); err != nil {
+		return
+	}
+	return
+}
+
+// UpdateUserCommonDevices 更新用户常用设备（增加/删除/排序）
+func UpdateUserCommonDevices(userID int, areaID uint64, deviceIDs []int) (err error) {
+
+	user := User{ID: userID}
+	if err = GetDB().Model(&user).Association("CommonDevices").Clear(); err != nil {
+		return
+	}
+
+	if len(deviceIDs) == 0 {
+		return
+	}
+	var devices []Device
+	if err = GetDB().Where("area_id=?", areaID).Find(&devices, deviceIDs).Error; err != nil {
+		return
+	}
+	deviceMap := make(map[int]Device)
+	for _, d := range devices {
+		deviceMap[d.ID] = d
+	}
+
+	devices = nil
+	for _, id := range deviceIDs {
+		if _, ok := deviceMap[id]; !ok {
+			continue
+		}
+		devices = append(devices, Device{ID: id})
+	}
+	return GetDB().Model(&user).Association("CommonDevices").Append(devices)
+}
+
+// SetDeviceCommon 设置设备为常用设备
+func SetDeviceCommon(userID int, areaID uint64, deviceID int) (err error) {
+
+	var device Device
+	if err = GetDB().Where("area_id=?", areaID).First(&device, deviceID).Error; err != nil {
+		return
+	}
+
+	user := User{ID: userID}
+	return GetDB().Model(&user).Association("CommonDevices").Append([]Device{device})
+}
+
+// RemoveUserCommonDevice 将设备从常用设备中取消
+func RemoveUserCommonDevice(userID int, areaID uint64, deviceID int) (err error) {
+
+	var device Device
+	if err = GetDB().Where("area_id=?", areaID).First(&device, deviceID).Error; err != nil {
+		return
+	}
+
+	user := User{ID: userID}
+	return GetDB().Model(&user).Association("CommonDevices").Delete([]Device{device})
+}
+
+// RemoveCommonDevice 将设备从常用设备中取消
+func RemoveCommonDevice(deviceID int) (err error) {
+	return GetDB().Where("device_id=?", deviceID).Delete(&UserCommonDevice{}).Error
 }

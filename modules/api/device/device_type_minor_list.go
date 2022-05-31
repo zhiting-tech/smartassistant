@@ -49,6 +49,7 @@ var minorTypes = map[plugin.DeviceType]minorType{
 	plugin.TypeTwoKeySwitch:   {"双键开关", plugin.TypeSwitch},
 	plugin.TypeThreeKeySwitch: {"三键开关", plugin.TypeSwitch},
 	plugin.TypeWirelessSwitch: {"无线开关", plugin.TypeSwitch},
+	plugin.TypeController:     {"控制器", plugin.TypeSwitch},
 
 	plugin.TypeConverter:  {"转换器", plugin.TypeOutlet},
 	plugin.TypeWallPlug:   {"入墙插座", plugin.TypeOutlet},

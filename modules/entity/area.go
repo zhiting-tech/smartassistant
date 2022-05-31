@@ -138,15 +138,6 @@ func SetAreaOwnerID(id uint64, ownerID int, tx *gorm.DB) (err error) {
 	return
 }
 
-// IsOwner 是否是area拥有者
-func IsOwner(userID int) bool {
-	var count int64
-	GetDB().Model(&User{}).Where(User{ID: userID}).
-		Joins("inner join areas on users.area_id=areas.id and areas.owner_id=users.id").
-		Count(&count)
-	return count > 0
-}
-
 // IsOwnerOfArea 是否是area拥有者
 func IsOwnerOfArea(userID int, areaID uint64) bool {
 	var area Area

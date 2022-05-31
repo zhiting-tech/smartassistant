@@ -29,9 +29,16 @@ func NewThingModelDefiner(iid string, fn NotifyFunc, tfn ThingModelNotifyFunc) *
 	t := Definer{
 		iid:                  iid,
 		instanceMap:          make(map[string]*Instance),
-		notifyFunc:           fn,
 		thingModelNotifyFunc: tfn,
 	}
+	t.notifyFunc = func(event AttributeEvent) error {
+		// 子设备的更新需要同时更新父设备
+		if event.IID != t.iid {
+			t.UpdateThingModel()
+		}
+		return fn(event)
+	}
+
 	return &t
 }
 
@@ -43,6 +50,7 @@ type Definer struct {
 	thingModelNotifyFunc ThingModelNotifyFunc
 }
 
+// Deprecated: 之后版本会删除，请使用baseService的Notify
 func (t Definer) Notify(iid string, aid int, val interface{}) error {
 	ev := AttributeEvent{
 		IID: iid,
@@ -299,11 +307,19 @@ func (t *Instance) NewLeakSensor() *BaseService {
 }
 func (t *Instance) NewLock() *BaseService {
 	return t.NewService(thingmodel.Lock).
-		WithAttributes(thingmodel.LockTargetState, thingmodel.Battery)
+		WithAttributes(thingmodel.Battery)
+}
+func (t *Instance) NewDoor() *BaseService {
+	return t.NewService(thingmodel.Door).
+		WithAttributes(thingmodel.CurrentPosition)
+}
+func (t *Instance) NewDoorbell() *BaseService {
+	return t.NewService(thingmodel.Doorbell).
+		WithAttributes(thingmodel.SwitchEvent)
 }
 func (t *Instance) NewMotionSensor() *BaseService {
 	return t.NewService(thingmodel.MotionSensor).
-		WithAttributes(thingmodel.MotionDetected, thingmodel.StatusLowBattery)
+		WithAttributes(thingmodel.MotionDetected)
 }
 
 func (t *Instance) NewBatteryService() *BaseService {
@@ -328,17 +344,40 @@ func (t *Instance) NewContactSensor() *BaseService {
 
 func (t *Instance) NewSpeaker() *BaseService {
 	return t.NewService(thingmodel.Speaker).
-		WithAttributes(thingmodel.Volume, thingmodel.Mute)
+		WithAttributes(
+			thingmodel.Volume,
+		// thingmodel.Mute
+		)
 }
 
 func (t *Instance) NewMicrophone() *BaseService {
 	return t.NewService(thingmodel.Microphone).
-		WithAttributes(thingmodel.Volume, thingmodel.Mute)
+		WithAttributes(
+			thingmodel.Volume,
+		// thingmodel.Mute
+		)
 }
 
 func (t *Instance) NewLightSensor() *BaseService {
 	return t.NewService(thingmodel.LightSensor).
-		WithAttributes(thingmodel.CurrentAmbientLightLevel, thingmodel.Active)
+		WithAttributes(thingmodel.CurrentAmbientLightLevel)
+}
+
+// NewCameraRTPStreamManagement 摄像头RTP流服务
+func (t *Instance) NewCameraRTPStreamManagement() *BaseService {
+	return t.NewService(thingmodel.CameraRTPStreamManagement).
+		WithAttributes(thingmodel.StreamingStatus)
+}
+
+// NewOperatingMode 设备工作模式服务
+func (t *Instance) NewOperatingMode() *BaseService {
+	return t.NewService(thingmodel.OperatingMode)
+}
+
+// NewMediaNegotiation webrtc媒体协商服务
+func (t *Instance) NewMediaNegotiation() *BaseService {
+	return t.NewService(thingmodel.MediaNegotiation).WithAttributes(
+		thingmodel.WebRtcControl, thingmodel.Answer)
 }
 
 type Service struct {

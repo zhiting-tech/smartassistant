@@ -11,5 +11,4 @@ func RegisterResourceRouter(r gin.IRouter) {
 	resourceAuthGroup := resourceGroup.Use(middleware.RequireOwner)
 	resourceAuthGroup.GET("", ListResource)
 	resourceAuthGroup.PUT("containers/:id", RestartContainer)
-
 }

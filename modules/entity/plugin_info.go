@@ -1,7 +1,6 @@
 package entity
 
 import (
-	"github.com/zhiting-tech/smartassistant/pkg/logger"
 	"gorm.io/datatypes"
 	"gorm.io/gorm/clause"
 )
@@ -24,6 +23,7 @@ const (
 // PluginInfo 开发者插件信息
 type PluginInfo struct {
 	ID        int
+	Name      string
 	AreaID    uint64 `gorm:"uniqueIndex:area_plugin"`
 	Area      Area   `gorm:"constraint:OnDelete:CASCADE;"`
 	PluginID  string `gorm:"uniqueIndex:area_plugin"`
@@ -56,7 +56,6 @@ func UpdatePluginInfo(pluginID string, pluginInfo PluginInfo) (err error) {
 func IsPluginAdd(pluginID string, areaID uint64) bool {
 	pluginInfo, err := GetPlugin(pluginID, areaID)
 	if err != nil {
-		logger.Errorf("get plugin %s info fail: %v\n", pluginID, err)
 		return false
 	}
 	return pluginInfo.Status == StatusInstallSuccess

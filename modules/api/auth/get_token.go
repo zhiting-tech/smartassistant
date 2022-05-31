@@ -213,7 +213,7 @@ func GetUserByToken(accessToken string) (u entity.User, err error) {
 			return u, errors.Wrap(err, status.ErrAccessTokenExpired)
 		}
 
-		return u, errors.Wrap(err, status.RequireLogin)
+		return u, errors.Wrap(err, status.InvalidUserCredentials)
 	}
 
 	uid, _ := strconv.Atoi(ti.GetUserID())

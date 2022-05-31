@@ -43,7 +43,7 @@ func ListUser(c *gin.Context) {
 		return
 	}
 
-	resp.IsOwner = entity.IsOwner(sessionUser.UserID)
+	resp.IsOwner = sessionUser.IsOwner
 
 	userRoles, err := entity.GetUserRoles(sessionUser.AreaID)
 	if err != nil {

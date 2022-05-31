@@ -34,6 +34,7 @@ func LoadPluginFromZip(path string, areaID uint64) (plg Plugin, err error) {
 	// save plugin info
 	data, _ := json.Marshal(plgConf)
 	pi := entity.PluginInfo{
+		Name:      plgConf.Name,
 		AreaID:    areaID,
 		Image:     plgConf.ID(),
 		Info:      plgConf.Info,

@@ -13,6 +13,7 @@ const (
 	PluginUpFail
 	WebsocketCommandNotFound
 	WebsocketDomainRequired
+	WebsocketEventRequired
 )
 
 func init() {
@@ -25,4 +26,5 @@ func init() {
 	errors.NewCode(PluginUpFail, "运行插件失败")
 	errors.NewCode(WebsocketCommandNotFound, "websocket 命令不存在")
 	errors.NewCode(WebsocketDomainRequired, "websocket 命令未指定 domain")
+	errors.NewCode(WebsocketEventRequired, "websocket 命令未指定 event")
 }

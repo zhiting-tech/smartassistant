@@ -5,7 +5,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
-	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
 	"github.com/zhiting-tech/smartassistant/pkg/cache"
@@ -35,12 +34,12 @@ func GetVerificationCode(c *gin.Context) {
 
 	user := session.Get(c)
 	if user == nil {
-		err = errors.New(status.RequireLogin)
+		err = errors.New(status.InvalidUserCredentials)
 		return
 	}
 
 	// 校验用户是否是拥有者
-	if !entity.IsOwner(user.UserID) {
+	if !user.IsOwner {
 		err = errors.New(status.Deny)
 		return
 	}

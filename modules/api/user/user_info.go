@@ -62,7 +62,7 @@ func InfoUser(c *gin.Context) {
 		return
 	}
 
-	resp.IsOwner = entity.IsOwner(userID)
+	resp.IsOwner = entity.IsOwnerOfArea(userID, user.AreaID)
 
 	resp.IsSelf = userID == sessionUser.UserID
 	resp.UserInfo, err = WrapUserInfo(c, user, resp.IsOwner)

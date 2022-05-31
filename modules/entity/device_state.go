@@ -15,11 +15,6 @@ type DeviceState struct {
 	CreatedAt time.Time      `json:"created_at"`
 }
 
-func (d DeviceState) MarshalJSON() ([]byte, error) {
-	// TODO implement me
-	panic("implement me")
-}
-
 func (d DeviceState) TableName() string {
 	return "device_states"
 }

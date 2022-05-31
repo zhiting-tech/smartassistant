@@ -20,6 +20,8 @@ func RegisterDeviceRouter(r gin.IRouter) {
 
 	deviceAuthGroup := r.Group("devices", middleware.RequireAccountWithScope(types.ScopeDevice))
 	deviceAuthGroup.GET("", ListAllDevice)
+	deviceAuthGroup.POST("", addDummyDevice)
+	deviceAuthGroup.PUT("", middleware.RequirePermission(types.DeviceUpdateOrder), deviceReorder)
 	deviceAuthGroup.PUT(":id", requireBelongsToUser, UpdateDevice)
 	deviceAuthGroup.GET(":id", requireBelongsToUser, InfoDevice)
 	deviceAuthGroup.GET(":id/logo", requireBelongsToUser, InfoDeviceLogo)
@@ -34,7 +36,7 @@ func RegisterDeviceRouter(r gin.IRouter) {
 	r.POST("/check", IsAccessAllow)
 
 	// 添加SA
-	r.POST("/sa", AddDevice)
+	r.POST("/sa", addSA)
 
 }
 

@@ -8,8 +8,8 @@ import (
 	"sync"
 
 	"github.com/zhiting-tech/smartassistant/modules/config"
-	"github.com/zhiting-tech/smartassistant/pkg/datatunnel"
-	"github.com/zhiting-tech/smartassistant/pkg/datatunnel/proto"
+	"github.com/zhiting-tech/smartassistant/pkg/datatunnel/v1"
+	"github.com/zhiting-tech/smartassistant/pkg/datatunnel/v1/proto"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
 	"google.golang.org/grpc/peer"
 )

@@ -54,7 +54,7 @@ func (sr SystemResource) GetPerUsedCpu() float64 {
 	cpuDelta := float64(sr.CpuStats.CpuUsage.TotalUsage - sr.PrecpuStats.CpuUsage.TotalUsage)
 	systemCpuDelta := float64(sr.CpuStats.SystemCpuUsage - sr.PrecpuStats.SystemCpuUsage)
 	if systemCpuDelta > 0 {
-		return Decimal((cpuDelta / systemCpuDelta) * float64(sr.CpuStats.OnlineCpus) * 100)
+		return Decimal((cpuDelta / systemCpuDelta) * 100)
 	} else {
 		return 0
 	}
@@ -87,4 +87,42 @@ func FormatTimeSize(time int64) string {
 	} else {
 		return fmt.Sprintf("%v天", math.Floor(float64(time)/float64(60*60*24)))
 	}
+}
+
+type Service struct {
+	Id          string  `json:"id"`           // 容器id
+	Name        string  `json:"name"`         // 容器名称
+	ServiceName string  `json:"service_name"` //
+	State       string  `json:"state"`        // 运行状态,running 运行中，exited 已暂停
+	RunTime     string  `json:"run_time"`     // 运行时间
+	PerCpuUsage float64 `json:"percpu_usage"` // cpu使用率
+	MemUsage    string  `json:"mem_usage"`    // 已使用内存
+	Type        uint8   `json:"type"`         // 容器服务类型,基础服务 1，插件类型 2，拓展服务 3
+}
+
+type Services []Service
+
+// Len 实现sort.Interface接口取元素数量方法
+func (s Services) Len() int {
+	return len(s)
+}
+
+// Less 实现sort.Interface接口比较元素方法,不能重启的排前面,按name排序
+func (s Services) Less(i, j int) bool {
+	_, b1 := unRestartList[s[i].Name]
+	_, b2 := unRestartList[s[j].Name]
+	if b1 && b2 {
+		return s[i].Name < s[j].Name
+	} else if b1 && !b2 {
+		return true
+	} else if !b1 && b2 {
+		return false
+	}
+	// 默认升序排列
+	return s[i].ServiceName < s[j].ServiceName
+}
+
+// Swap 实现sort.Interface接口交换元素方法
+func (s Services) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
 }

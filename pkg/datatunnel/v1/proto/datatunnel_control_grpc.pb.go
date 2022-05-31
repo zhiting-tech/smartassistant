@@ -125,5 +125,5 @@ var _DatatunnelController_serviceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "pkg/datatunnel/proto/datatunnel_control.proto",
+	Metadata: "pkg/datatunnel/v1/proto/datatunnel_control.proto",
 }

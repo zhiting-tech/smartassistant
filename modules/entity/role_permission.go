@@ -98,7 +98,11 @@ func GetUserPermissions(userID int) (up UserPermissions, err error) {
 		Find(&ps).Error; err != nil {
 		return
 	}
-	return UserPermissions{ps: ps, isOwner: IsOwner(userID)}, nil
+	user, err := GetUserByID(userID)
+	if err != nil {
+		return
+	}
+	return UserPermissions{ps: ps, isOwner: IsOwnerOfArea(userID, user.AreaID)}, nil
 }
 
 func UserRolePermissionsScope(userID int) func(db *gorm.DB) *gorm.DB {
@@ -115,7 +119,11 @@ func JudgePermit(userID int, p types.Permission) bool {
 
 func judgePermit(userID int, action, target, attribute string) bool {
 	// SA拥有者默认拥有所有权限
-	if IsOwner(userID) {
+	user, err := GetUserByID(userID)
+	if err != nil {
+		return false
+	}
+	if IsOwnerOfArea(userID, user.AreaID) {
 		return true
 	}
 

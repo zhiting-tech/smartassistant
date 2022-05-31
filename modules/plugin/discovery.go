@@ -103,7 +103,6 @@ func (m *discovery) registerService(key string, endpoint endpoints.Endpoint) err
 		return err
 	}
 
-	// FIXME 仅支持单个家庭
 	area, err := getCurrentArea()
 	if err != nil {
 		logger.Errorf("getCurrentArea err: %s", err.Error())

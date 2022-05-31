@@ -46,11 +46,6 @@ func (i Image) Repository() string {
 	return fmt.Sprintf("%s/%s", i.Registry, i.Name)
 }
 
-// IsImageNewest TODO 镜像是否最新
-func (c *Client) IsImageNewest() (isNewest bool, err error) {
-	return false, nil
-}
-
 func (c *Client) GetImageNewestTag(img Image) (tag string, err error) {
 	var tagResp struct {
 		Name string   `json:"name"`
@@ -118,6 +113,9 @@ func (c *Client) Pull(refStr string) (err error) {
 
 // ImageRemove 删除镜像
 func (c *Client) ImageRemove(refStr string) (err error) {
+	if !c.IsImageAdd(refStr) {
+		return nil
+	}
 	_, err = c.DockerClient.ImageRemove(context.Background(), refStr, types.ImageRemoveOptions{Force: true})
 	if err != nil {
 		return

@@ -5,7 +5,7 @@ import (
 	"net"
 )
 
-// LocalIP 获取本地地址 TODO 暂时提供给插件获取本地地址，后续取消host模式后修改
+// LocalIP 获取本地地址
 func LocalIP() (string, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {

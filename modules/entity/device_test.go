@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
 	"github.com/zhiting-tech/smartassistant/modules/types"
 )
 
@@ -33,16 +34,16 @@ func TestAddDevice(t *testing.T) {
 		OwnerID:    2,
 	}
 
-	err := AddDevice(&testSADevice, GetDB())
+	err := CreateDevice(&testSADevice, GetDB())
 	ast.NoError(err, "add device error: %v", err)
 
-	err = AddDevice(&testDevice2, GetDB())
+	err = CreateDevice(&testDevice2, GetDB())
 	ast.NoError(err, "add device error: %v", err)
 
-	err = AddDevice(&testSADevice, GetDB())
+	err = CreateDevice(&testSADevice, GetDB())
 	ast.Error(err, "add exist device error")
 
-	err = AddDevice(&errorIIDDevice, GetDB())
+	err = CreateDevice(&errorIIDDevice, GetDB())
 	ast.Error(err, "add error device error")
 }
 
@@ -51,8 +52,8 @@ func TestCheckSaDeviceCreator(t *testing.T) {
 
 	err := CheckSaDeviceCreator(1)
 	ast.NoError(err, "check sa device creator error: %v", err)
-	//err = CheckSaDeviceCreator(2)
-	//ast.Error(err, "check sa device creator error")
+	// err = CheckSaDeviceCreator(2)
+	// ast.Error(err, "check sa device creator error")
 }
 
 func TestIsSAOwner(t *testing.T) {

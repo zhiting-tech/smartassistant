@@ -20,6 +20,8 @@ import (
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	errors2 "github.com/zhiting-tech/smartassistant/pkg/errors"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
+	"google.golang.org/grpc/codes"
+	grpcStatus "google.golang.org/grpc/status"
 )
 
 const (
@@ -229,10 +231,13 @@ func (m *Manager) StartUpdateJobWithContext(ctx context.Context, version string)
 
 	req.SoftwareVersion = result.Data.Version
 	for _, subservice := range result.Data.Services {
-		err = docker.GetClient().Pull(subservice.Image)
-		if err != nil {
-			err = errors2.New(status.ImagePullErr)
-			return
+		if !docker.GetClient().IsImageAdd(subservice.Image) {
+			logger.Debugf("image not found, pull %s", subservice.Image)
+			err = docker.GetClient().Pull(subservice.Image)
+			if err != nil {
+				err = errors2.New(status.ImagePullErr)
+				return
+			}
 		}
 		req.UpdateItems = append(req.UpdateItems, &proto.UpdateItem{
 			ServiceName: subservice.Name,
@@ -254,13 +259,14 @@ func (m *Manager) StartUpdateJobWithContext(ctx context.Context, version string)
 		}
 	}()
 
-	newCtx := trace.ContextWithSpan(context.Background(), trace.SpanFromContext(ctx))
-	go func() {
-		time.Sleep(time.Second)
-		err = GetClient().UpdateWithContext(newCtx, &req)
-		if err != nil {
-			logger.Errorf("restart error %v", err)
+	err = GetClient().UpdateWithContext(ctx, &req)
+	if err != nil {
+		code := grpcStatus.Code(err)
+		if code == codes.Unavailable {
+			err = errors2.Wrap(err, status.SupervisorNotStart)
+		} else {
+			err = errors2.Wrap(err, errors2.InternalServerErr)
 		}
-	}()
+	}
 	return
 }

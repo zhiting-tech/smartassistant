@@ -84,9 +84,6 @@ func (i Instance) GetInfo() (info DeviceInfo, err error) {
 			}
 		}
 
-		if info.Name == "" {
-			info.Name = info.Model
-		}
 		return
 	}
 	err = errors.New("info service not found")

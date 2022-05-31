@@ -17,6 +17,7 @@ const (
 	DeviceTypeNotExist
 	DeviceLogoNotExist
 	AddDeviceFail
+	AttrNotFound
 )
 
 func init() {
@@ -33,4 +34,5 @@ func init() {
 	errors.NewCode(DeviceTypeNotExist, "设备类型不存在")
 	errors.NewCode(DeviceLogoNotExist, "设备图标不存在")
 	errors.NewCode(AddDeviceFail, "添加设备失败")
+	errors.NewCode(AttrNotFound, "属性不存在")
 }

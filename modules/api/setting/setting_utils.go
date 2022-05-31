@@ -11,6 +11,8 @@ import (
 	"encoding/pem"
 	errors2 "errors"
 	"fmt"
+	"github.com/tidwall/gjson"
+	"io/ioutil"
 	"net/http"
 	"time"
 
@@ -32,7 +34,7 @@ const (
 	PublicKeyEmail     = "smartassistant@zhitingtech.com"
 )
 
-func GetAreaAuthToken(areaID uint64) string {
+func GetAreaAuthToken(areaID uint64) (token string, err error) {
 	req, _ := http.NewRequest("", "", nil)
 	scClient, _ := entity.GetSCClient(areaID)
 	tgr := oauth2.TokenGenerateRequest{
@@ -45,11 +47,11 @@ func GetAreaAuthToken(areaID uint64) string {
 
 	ti, err := oauth.GetOauthServer().GetAccessToken(oauth2.ClientCredentials, &tgr)
 	if err != nil {
-		logger.Errorf("get access token failed: (%v)", err)
-		return ""
+		return
 	}
 
-	return ti.GetAccess()
+	token = ti.GetAccess()
+	return
 }
 
 // sendAreaAuthToSC 发送认证token给SC
@@ -69,8 +71,13 @@ func sendAreaAuthToSC(areaID uint64) {
 	saID := config.GetConf().SmartAssistant.ID
 	scUrl := config.GetConf().SmartCloud.URL()
 	url := fmt.Sprintf("%s/sa/%s/areas/%d", scUrl, saID, areaID)
+	token, err := GetAreaAuthToken(areaID)
+	if err != nil {
+		logger.Errorf("get access token failed: (%v)\n", err)
+		return
+	}
 	body := map[string]interface{}{
-		"area_token": GetAreaAuthToken(areaID),
+		"area_token": token,
 	}
 	b, _ := json.Marshal(body)
 	logger.Debug(url)
@@ -93,6 +100,18 @@ func sendAreaAuthToSC(areaID uint64) {
 		err = errors2.New(httpResp.Status)
 		return
 	}
+
+	defer httpResp.Body.Close()
+	bytes, _ := ioutil.ReadAll(httpResp.Body)
+	// 增加对sc响应状态码的判断
+	status := gjson.GetBytes(bytes, "status").Int()
+	reason := gjson.GetBytes(bytes, "reason").String()
+	if status != 0 {
+		logger.Warnf("request %s error,reason:%v\n", url, reason)
+		err = errors2.New(reason)
+		return
+	}
+
 }
 
 func SendAreaAuthToSC() {

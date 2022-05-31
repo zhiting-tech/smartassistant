@@ -2,10 +2,9 @@ package event
 
 import (
 	"encoding/json"
-	"errors"
+	"sync"
 
 	"github.com/sirupsen/logrus"
-	"gorm.io/gorm"
 
 	"github.com/zhiting-tech/smartassistant/modules/device"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
@@ -20,11 +19,12 @@ import (
 )
 
 func RegisterEventFunc(ws *websocket.Server) {
-	event.RegisterEvent(event.AttributeChange, ws.BroadcastMsg,
+	event.RegisterEvent(event.AttributeChange, ws.MulticastMsg,
 		UpdateDeviceShadowBeforeExecuteTask, RecordDeviceState)
-	event.RegisterEvent(event.DeviceDecrease, ws.BroadcastMsg)
-	event.RegisterEvent(event.DeviceIncrease, ws.BroadcastMsg)
-	event.RegisterEvent(event.ThingModelChange, UpdateThingModel)
+	event.RegisterEvent(event.DeviceDecrease, ws.MulticastMsg)
+	event.RegisterEvent(event.DeviceIncrease, ws.MulticastMsg)
+	event.RegisterEvent(event.OnlineStatus, ws.MulticastMsg)
+	event.RegisterEvent(event.ThingModelChange, UpdateThingModel, ws.MulticastMsg)
 }
 
 func UpdateThingModel(em event.EventMessage) (err error) {
@@ -34,12 +34,17 @@ func UpdateThingModel(em event.EventMessage) (err error) {
 	iid := em.Param["iid"].(string)
 
 	// 网关未添加则设备不更新
-	if _, err = entity.GetPluginDevice(areaID, pluginID, iid); err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			logger.Error(err)
-			return err
-		}
-		return nil
+	isGatewayExist, err := entity.IsDeviceExist(areaID, pluginID, iid)
+	if err != nil {
+		return
+	}
+	if !isGatewayExist {
+		return
+	}
+	// 查询父设备所属房间
+	gDevice, err := entity.GetPluginDevice(areaID, pluginID, iid)
+	if err != nil {
+		return
 	}
 	// 更新物模型
 	isGateway := tm.IsGateway()
@@ -56,24 +61,37 @@ func UpdateThingModel(em event.EventMessage) (err error) {
 				return
 			}
 		} else {
-			e, err = plugin.InstanceToEntity(ins, pluginID, areaID)
+			e, err = plugin.InstanceToEntity(ins, pluginID, iid, areaID)
 			if err != nil {
 				logrus.Error(err)
 				err = nil
 				continue
 			}
+
+			// 更新前判断子设备是否已存在
+			isChildExist, _ := entity.IsDeviceExist(areaID, pluginID, e.IID)
 			if err = entity.UpdateThingModel(&e); err != nil {
 				logrus.Error(err)
 				err = nil
 				continue
 			}
-			// 为所有角色增加改设备的权限
-			if err = device.AddDevicePermissionForRoles(e, entity.GetDB()); err != nil {
-				logrus.Error(err)
-				err = nil
-				continue
+
+			// 子设备不存在则为所有角色增加改设备的权限 && 更新子设备房间为网关默认房间
+			if !isChildExist {
+				if err = device.AddDevicePermissionForRoles(e, entity.GetDB()); err != nil {
+					logrus.Error(err)
+					err = nil
+					continue
+				}
+
+				// 更新设备房间为默认房间
+				if err = entity.UpdateDevice(e.ID, entity.Device{LocationID: gDevice.LocationID}); err != nil {
+					logrus.Error(err)
+					err = nil
+					continue
+				}
 			}
-			// 发送通知有设备增加
+			// 发送通知有设备增加 FIXME 更新也发通知（子设备重复添加时需要通知来完成添加流程）
 			m := event.NewEventMessage(event.DeviceIncrease, areaID)
 			m.Param = map[string]interface{}{
 				"device": e,
@@ -93,6 +111,8 @@ func UpdateDeviceShadowBeforeExecuteTask(em event.EventMessage) (err error) {
 	return
 }
 
+var updateShadowMap sync.Map
+
 func UpdateDeviceShadow(em event.EventMessage) error {
 
 	attr := em.GetAttr()
@@ -100,8 +120,17 @@ func UpdateDeviceShadow(em event.EventMessage) error {
 		logger.Warn(" attr is nil")
 		return nil
 	}
-	dID := em.GetDeviceID()
-	d, err := entity.GetDeviceByID(dID)
+	deviceID := em.GetDeviceID()
+
+	val, _ := updateShadowMap.LoadOrStore(deviceID, &sync.Mutex{})
+	mu := val.(*sync.Mutex)
+	mu.Lock()
+	defer func() {
+		mu.Unlock()
+		updateShadowMap.Delete(deviceID)
+	}()
+
+	d, err := entity.GetDeviceByID(deviceID)
 	if err != nil {
 		return err
 	}
@@ -115,7 +144,7 @@ func UpdateDeviceShadow(em event.EventMessage) error {
 	if err != nil {
 		return err
 	}
-	if err = entity.GetDB().Save(d).Error; err != nil {
+	if err = entity.GetDB().Model(&entity.Device{ID: d.ID}).Update("shadow", d.Shadow).Error; err != nil {
 		return err
 	}
 
@@ -141,7 +170,7 @@ type State struct {
 }
 
 func RecordDeviceState(em event.EventMessage) (err error) {
-	deviceID := em.Param["device_id"].(int)
+	deviceID := em.GetDeviceID()
 	d, err := entity.GetDeviceByID(deviceID)
 	if err != nil {
 		return

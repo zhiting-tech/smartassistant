@@ -19,6 +19,10 @@ func (a *Attribute) SetVal(val interface{}) {
 	a.meta.Val = val
 }
 
+func (a *Attribute) GetVal() (val interface{}) {
+	return a.meta.Val
+}
+
 func (a *Attribute) Set(val interface{}) error {
 	if a.iAttribute == nil {
 		return NotEnableErr

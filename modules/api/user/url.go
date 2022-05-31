@@ -29,6 +29,8 @@ func RegisterUserRouter(r gin.IRouter) {
 	userGroup.GET("/permissions", role.UserPermissions)
 	userGroup.PUT("/owner", TransferOwner)
 	userGroup.PUT("/departments", UserInfoDepartment)
+	userGroup.GET("/common_devices", getUserCommonDevices)
+	userGroup.PUT("/common_devices", updateUserCommonDevices)
 
 	invitationGroup := r.Group("/invitation")
 	{

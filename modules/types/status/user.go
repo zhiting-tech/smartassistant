@@ -16,7 +16,7 @@ const (
 	NicknameLengthLowerLimit
 	PasswordInputNilErr
 	PasswordFormatErr
-	RequireLogin
+	InvalidUserCredentials
 	QRCodeInvalid
 	QRCodeExpired
 	QRCodeCreatorDeny
@@ -47,14 +47,14 @@ func init() {
 	errors.NewCode(UserNotExist, "用户不存在")
 	errors.NewCode(AccountNameExist, "当前用户名已存在,请重新输入")
 	errors.NewCode(AccountNameInputNilErr, "请输入用户名")
-	errors.NewCode(AccountNameFormatErr, "仅字母、数字和符合组合")
+	errors.NewCode(AccountNameFormatErr, "英文小写字母、数字和组合且长度1到20位")
 
 	errors.NewCode(NickNameInputNilErr, "请输入昵称")
 	errors.NewCode(NicknameLengthUpperLimit, "昵称长度不能大于20位")
 	errors.NewCode(NicknameLengthLowerLimit, "昵称长度不能小于6位")
 	errors.NewCode(PasswordInputNilErr, "请输入密码")
-	errors.NewCode(PasswordFormatErr, "仅字母、数字和符合组合, 且不小于6位")
-	errors.NewCode(RequireLogin, "用户未登录")
+	errors.NewCode(PasswordFormatErr, "仅字母、数字和符合组合, 且长度6到20位")
+	errors.NewCode(InvalidUserCredentials, "用户凭证无效")
 	errors.NewCode(QRCodeInvalid, "二维码无效")
 	errors.NewCode(QRCodeExpired, "二维码已过期")
 	errors.NewCode(QRCodeCreatorDeny, "二维码创建者无权限")

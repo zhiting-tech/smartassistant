@@ -80,7 +80,7 @@ func TestArea(t *testing.T) {
 		{
 			Method: "DELETE",
 			Path:   "/areas/" + areaID + "/users/2",
-			Status: status.RequireLogin,
+			Status: status.InvalidUserCredentials,
 		},
 	}
 

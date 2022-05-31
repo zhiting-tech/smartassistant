@@ -58,7 +58,7 @@ func (es *ExtensionServer) GetUserInfo(ctx context.Context, req *pb.GetAreaInfoR
 		UserId:      int32(user.ID),
 		AccountName: user.AccountName,
 		NickName:    user.Nickname,
-		IsOwner:     entity.IsOwner(user.ID),
+		IsOwner:     entity.IsOwnerOfArea(user.ID, user.AreaID),
 	}
 	resp.AreaInfo = &pb.Area{
 		AreaId:   area.ID,

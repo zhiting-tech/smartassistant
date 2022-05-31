@@ -1,0 +1,61 @@
+syntax = "proto3";
+package proxy.control.proto;
+option go_package = "./proto";
+
+
+service ProxyController {
+    // 最初版本的控制流，后续message修改增加新版本接口，用于兼容
+    rpc ControlStream(stream ProxyControlStreamMsg) returns (stream ProxyControlStreamMsg);
+}
+
+message ProxyControlStreamMsg {
+    ProxyControlStreamMsgHdr Hdr = 1;
+    ProxyControlStreamMsgBody Body = 2;
+}
+
+enum ProxyControlStreamMsgType {
+    // 请求
+    REQUEST = 0;
+    // 响应
+    RESPONSE = 1;
+    // 通知,不需要响应
+    NOTIFY = 2;
+}
+
+message ProxyControlStreamMsgHdr {
+    int64 MessageId = 1;
+    ProxyControlStreamMsgType MessageType = 2;
+}
+
+message ProxyControlStreamMsgBody {
+    // 方法版本
+    int32 Version = 1;
+    // 方法名
+    string Method = 2;
+    // 参数
+    repeated bytes Values = 3;
+    // 状态码
+    int32 StatusCode = 4;
+    // 自定义报错信息
+    string Reason = 5;
+}
+
+message AuthenticateRequest {
+    string SAID  = 1;
+    string SAKey = 2;
+}
+
+message RegisterServiceRequest {
+    repeated RegisterServiceValue Services = 1;
+}
+
+message RegisterServiceValue {
+    string ServiceName = 1;
+    int32 ServicePort = 2;
+}
+
+message NewConnectionEvent {
+    string ServiceName = 1;
+    bytes Key = 2;
+    string RemoteAddr = 3;
+}

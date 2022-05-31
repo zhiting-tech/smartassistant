@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/setting"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/config"
@@ -25,7 +27,6 @@ import (
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"github.com/zhiting-tech/smartassistant/pkg/http/httpclient"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
-	"gorm.io/gorm"
 )
 
 const (
@@ -61,13 +62,18 @@ func (req *AreaMigrationReq) ReBindWithContext(ctx context.Context, areaID uint6
 	if err != nil {
 		return
 	}
+
+	token, err := setting.GetAreaAuthToken(areaID)
+	if err != nil {
+		return
+	}
 	body := map[string]interface{}{
 		"mode":                  "rebind",
 		"backup_file":           req.BackupFile,
 		"sum":                   req.Sum,
 		"local_said":            config.GetConf().SmartAssistant.ID,
 		"local_migration_token": jwt,
-		"local_area_token":      setting.GetAreaAuthToken(areaID),
+		"local_area_token":      token,
 	}
 	content, err = json.Marshal(body)
 	if err != nil {
@@ -269,7 +275,7 @@ func restoreCloudAreaDBData(db *gorm.DB, tx *gorm.DB) (err error) {
 	}
 	if len(devices) > 0 {
 		for index := 0; index < len(devices); index++ {
-			if devices[index].Model == types.SaModel {
+			if devices[index].IsSa() {
 				continue
 			}
 			err = tx.Model(entity.Device{}).Create(&devices[index]).Error

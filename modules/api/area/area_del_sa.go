@@ -22,7 +22,6 @@ import (
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/clouddisk"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/plugin"
-	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
 	"github.com/zhiting-tech/smartassistant/modules/utils/url"
@@ -233,7 +232,7 @@ func setDeviceServer(c *gin.Context, currentAreaID uint64, cloudAreaID, cloudAcc
 	serverInfo := url.Join(url.BuildQuery(query))
 
 	for _, d := range devices {
-		if d.Model == types.SaModel || !entity.IsMeiHuiZhiJuBrand(d.PluginID) {
+		if d.IsSa() || !entity.IsMeiHuiZhiJuBrand(d.PluginID) {
 			continue
 		}
 		identify := plugin.Identify{
@@ -242,6 +241,7 @@ func setDeviceServer(c *gin.Context, currentAreaID uint64, cloudAreaID, cloudAcc
 			AreaID:   d.AreaID,
 		}
 		if !plugin.GetGlobalClient().IsOnline(identify) {
+			logger.Warnf("%s is offline, ignore", identify.ID())
 			continue
 		}
 		var das thingmodel.ThingModel

@@ -27,8 +27,8 @@ func RemoveDevice(ctx context.Context, deviceID int) (err error) {
 		return errors.Wrap(err, errors.InternalServerErr)
 	}
 
-	if d.Model == types.SaModel {
-		return errors.New(status.ForbiddenBindOtherSA)
+	if d.IsSa() {
+		return errors.New(status.ForbiddenRemoveSADevice)
 	}
 	identify := Identify{
 		PluginID: d.PluginID,
@@ -100,7 +100,7 @@ func ThingModelToEntity(iid string, tm thingmodel.ThingModel, pluginID string, a
 	d.Type = conf.Type.String()
 	return
 }
-func InstanceToEntity(instance thingmodel.Instance, pluginID string, areaID uint64) (d entity.Device, err error) {
+func InstanceToEntity(instance thingmodel.Instance, pluginID, pIID string, areaID uint64) (d entity.Device, err error) {
 	info, err := instance.GetInfo()
 	if err != nil {
 		return
@@ -114,18 +114,21 @@ func InstanceToEntity(instance thingmodel.Instance, pluginID string, areaID uint
 		return
 	}
 	conf := GetGlobalClient().DeviceConfig(pluginID, info.Model)
-	name := conf.Name
-	if conf.Name == "" {
-		name = info.Model
+	if info.Name == "" {
+		info.Name = conf.Name
+		if conf.Name == "" {
+			info.Name = info.Model
+		}
 	}
 	d = entity.Device{
-		Name:         name,
+		Name:         info.Name,
 		Model:        info.Model,
 		Manufacturer: info.Manufacturer,
 		IID:          info.IID,
 		PluginID:     pluginID,
 		AreaID:       areaID,
 		ThingModel:   tmJson,
+		ParentIID:    pIID,
 	}
 	shadow := entity.NewShadow()
 	for _, srv := range instance.Services {
@@ -189,20 +192,27 @@ func (u URL) PluginPath() string {
 
 // ControlURL 返回设备的插件控制页url
 func ControlURL(d entity.Device, req *http.Request, userID int) (*URL, error) {
-	if d.Model == types.SaModel {
+	if d.IsSa() {
 		return nil, nil
 	}
-	token, err := oauth.GetUserPluginToken(userID, req, d.AreaID)
+	pluginToken, err := oauth.GetUserPluginToken(userID, req, d.AreaID)
 	if err != nil {
 		return nil, err
 	}
+	return ControlURLWithToken(d, req, pluginToken)
+}
 
+// ControlURLWithToken 返回设备的插件控制页url
+func ControlURLWithToken(d entity.Device, req *http.Request, pluginToken string) (*URL, error) {
+	if d.IsSa() {
+		return nil, nil
+	}
 	q := map[string]interface{}{
 		"device_id": d.ID,
 		"iid":       d.IID,
 		"model":     d.Model,
 		"name":      d.Name,
-		"token":     token,
+		"token":     pluginToken,
 		"type":      GetGlobalClient().DeviceConfig(d.PluginID, d.Model).Type,
 		"sa_id":     config.GetConf().SmartAssistant.ID,
 		"plugin_id": d.PluginID,

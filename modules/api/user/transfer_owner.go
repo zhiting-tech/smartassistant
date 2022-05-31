@@ -23,12 +23,12 @@ func TransferOwner(c *gin.Context) {
 
 	user := session.Get(c)
 	if user == nil {
-		err = errors.Wrap(err, status.RequireLogin)
+		err = errors.Wrap(err, status.InvalidUserCredentials)
 		return
 	}
 
 	// 判断是否是拥有者
-	if !entity.IsOwner(user.UserID) {
+	if !user.IsOwner {
 		err = errors.Wrap(err, status.Deny)
 		return
 	}

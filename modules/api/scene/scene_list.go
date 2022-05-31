@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	device2 "github.com/zhiting-tech/smartassistant/modules/device"
+	"github.com/zhiting-tech/smartassistant/modules/plugin"
 
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
@@ -380,7 +381,15 @@ func WrapDeviceItem(item *Item, req *http.Request) (err error) {
 		item.Status = int(deviceAlreadyDelete)
 		return
 	}
-	// TODO:判断设备是否可连接
-	item.Status = int(deviceNormal)
+	if plugin.GetGlobalClient().IsOnline(plugin.Identify{
+		PluginID: device.PluginID,
+		IID:      device.IID,
+		AreaID:   device.AreaID,
+	}) {
+		item.Status = int(deviceNormal)
+	} else {
+		item.Status = int(deviceDisConnect)
+	}
+
 	return
 }

@@ -17,6 +17,8 @@ const (
 	// serviceDiscover 发现设备
 	serviceDiscover ServiceType = "discover"
 
+	serviceSubscribeEvent ServiceType = "subscribe_event"
+
 	// serviceGetInstances 获取设备物模型
 	serviceGetInstances ServiceType = "get_instances"
 	// serviceSetAttributes 设置设备属性
@@ -51,8 +53,10 @@ type Request struct {
 	Service ServiceType     `json:"service"` // 对应的websocket命令
 	Data    json.RawMessage `json:"data"`    // 具体的参数
 
+	Event string `json:"event,omitempty"` // server为 subscribe_event 时可选
+
 	ginCtx *gin.Context
-	user   session.User // 发起请求的用户信息
+	user   *session.User // 发起请求的用户信息
 }
 
 type CallFunc func(req Request) (interface{}, error)
@@ -70,7 +74,6 @@ type Data interface {
 }
 
 type Response struct {
-	ID      int64 `json:"id"`
 	Error   Error `json:"error,omitempty"`
 	Success bool  `json:"success"`
 }
@@ -80,32 +83,26 @@ type Error struct {
 	Message string     `json:"message"`
 }
 
-type Event struct {
-	EventType string `json:"event_type"`
-}
-
 // Message 服务端响应的消息
 type Message struct {
+	ID int64 `json:"id"`
 	*Response
-	*Event
-	Data interface{} `json:"data"`
-	Type MsgType     `json:"type"`
+	EventType string      `json:"event_type,omitempty"`
+	Data      interface{} `json:"data"`
+	Type      MsgType     `json:"type"`
 }
 
 func NewResponse(id int64) *Message {
 	return &Message{
-		Response: &Response{
-			ID: id,
-		},
-		Type: MsgTypeResponse,
+		ID:       id,
+		Response: &Response{},
+		Type:     MsgTypeResponse,
 	}
 }
 
 func NewEvent(eventType string) *Message {
 	return &Message{
-		Event: &Event{
-			EventType: eventType,
-		},
-		Type: MsgTypeEvent,
+		EventType: eventType,
+		Type:      MsgTypeEvent,
 	}
 }

@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"github.com/gin-gonic/gin"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/brand"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/gin-gonic/gin"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/cloud"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
@@ -50,12 +51,12 @@ func ListAddedBrands() (brandInfos []BrandInfo, err error) {
 		}
 		brand = BrandInfo{
 			Brand: cloud.Brand{
-				LogoURL:      "", // TODO 使用本地的图片
+				LogoURL:      "",
 				Name:         plg.Brand,
 				PluginAmount: 0,
 			},
 			IsAdded:  true,
-			IsNewest: false, // TODO 品牌是否最新判断不好实现
+			IsNewest: false, // TODO 品牌是否最新判断逻辑调整
 		}
 		brandInfoMap[plg.Brand] = brand
 	}

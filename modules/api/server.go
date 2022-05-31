@@ -9,7 +9,6 @@ import (
 
 	"github.com/zhiting-tech/smartassistant/modules/api/middleware"
 	"github.com/zhiting-tech/smartassistant/modules/config"
-	"github.com/zhiting-tech/smartassistant/modules/logreplay"
 	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/modules/utils/url"
 	"github.com/zhiting-tech/smartassistant/modules/websocket"
@@ -47,7 +46,8 @@ func NewHttpServer(ws gin.HandlerFunc) *HttpServer {
 	websocketGroup.Use(otelgin.Middleware("websocket"), middleware.RequireToken)
 	websocketGroup.GET("", ws)
 
-	r.GET("/log", logreplay.LogReceiver)
+	// 内网穿透后禁止使用 避免安全问题
+	// r.GET("/log", logreplay.LogReceiver)
 
 	// 静态文件
 	r.Static(url.BackendStaticPath(), "./static")

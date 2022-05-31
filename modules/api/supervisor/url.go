@@ -2,6 +2,7 @@ package supervisor
 
 import (
 	"github.com/gin-gonic/gin"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/middleware"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/types"
@@ -35,7 +36,7 @@ func getSwUpgradePermission() (p types.Permission) {
 		return
 	}
 
-	return types.NewDeviceManage(device.ID, "软件升级", types.SoftwareUpgrade)
+	return types.NewDeviceSoftwareUpgrade(device.ID)
 }
 
 func getFwUpgradePermission() (p types.Permission) {
@@ -45,5 +46,5 @@ func getFwUpgradePermission() (p types.Permission) {
 		return
 	}
 
-	return types.NewDeviceManage(device.ID, "固件升级", types.FwUpgrade)
+	return types.NewDeviceFwUpgrade(device.ID)
 }

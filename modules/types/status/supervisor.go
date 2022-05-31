@@ -17,6 +17,7 @@ const (
 	BackupInfoNotExist
 	BackupInfoIsNotSuccessErr
 	OnBackupExist
+	SupervisorNotStart
 )
 
 func init() {
@@ -32,5 +33,5 @@ func init() {
 	errors.NewCode(BackupInfoNotExist, "该数据不存在")
 	errors.NewCode(BackupInfoIsNotSuccessErr, "该数据执行状态不成功")
 	errors.NewCode(OnBackupExist, "有计划备份正在执行")
-
+	errors.NewCode(SupervisorNotStart, "supervisor进程未启动")
 }

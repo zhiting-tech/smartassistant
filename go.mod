@@ -8,6 +8,7 @@ require (
 	github.com/docker/docker v20.10.7+incompatible
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/gin-gonic/gin v1.7.7
+	github.com/go-gormigrate/gormigrate/v2 v2.0.0 // indirect
 	github.com/go-playground/validator/v10 v10.4.1
 	github.com/go-redis/redis v6.15.9+incompatible
 	github.com/gofrs/uuid v3.3.0+incompatible // indirect
@@ -28,6 +29,7 @@ require (
 	github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/mozillazg/go-pinyin v0.18.0
+	github.com/mozillazg/go-unidecode v0.1.1
 	github.com/myesui/uuid v1.0.0 // indirect
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible
@@ -49,7 +51,7 @@ require (
 	go.opentelemetry.io/otel/exporters/jaeger v1.4.0
 	go.opentelemetry.io/otel/sdk v1.4.0
 	go.opentelemetry.io/otel/trace v1.4.0
-	go.uber.org/atomic v1.7.0
+	go.uber.org/atomic v1.7.0 // indirect
 	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2
 	golang.org/x/net v0.0.0-20210405180319-a5a99cb37ef4
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c

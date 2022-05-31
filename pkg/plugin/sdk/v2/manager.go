@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/sirupsen/logrus"
-	"go.uber.org/atomic"
 
 	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2/definer"
 	"github.com/zhiting-tech/smartassistant/pkg/thingmodel"
@@ -15,14 +14,18 @@ import (
 var ThingModelNotFoundErr = errors.New("thing model not found")
 
 func newDevice(d Device) *device {
-	return &device{d, nil, atomic.NewBool(false)}
+	dd := device{
+		Device: d,
+	}
+	return &dd
 }
 
 type device struct {
 	Device
 	df *definer.Definer
 
-	connected *atomic.Bool
+	connected bool
+	mutex     sync.Mutex
 }
 
 type Manager struct {
@@ -65,16 +68,26 @@ func (m *Manager) Unsubscribe(ch EventChan) {
 }
 
 // InitOrUpdateDevice 添加或更新设备
-func (m *Manager) InitOrUpdateDevice(device Device) error {
-	if device == nil {
+func (m *Manager) InitOrUpdateDevice(d Device) error {
+	if d == nil {
 		return errors.New("device is nil")
 	}
-	_, loaded := m.devices.LoadOrStore(device.Info().IID, newDevice(device))
+
+	v, loaded := m.devices.LoadOrStore(d.Info().IID, newDevice(d))
 	if loaded {
-		logrus.Debugf("device %s already exist", device.Info().IID)
+		logrus.Debugf("device %s already exist", d.Info().IID)
+		oldDevice := v.(*device)
+		if oldDevice.Address() != d.Address() {
+			logrus.Debugf("device %v change address: %s -> %s:",
+				d.Info().IID, oldDevice.Address(), d.Address())
+			m.devices.Store(d.Info().IID, newDevice(d))
+			oldDevice.Disconnect(d.Info().IID)
+			return nil
+		}
+
 		return nil
 	}
-	logrus.Info("add device:", device.Info())
+	logrus.Info("add device:", d.Info())
 
 	return nil
 }
@@ -123,7 +136,9 @@ func (m *Manager) Connect(iid string, params map[string]interface{}) (err error)
 		}
 	}
 
-	if d.connected.Swap(true) {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+	if d.connected {
 		return
 	}
 	if err = d.Connect(); err != nil {
@@ -142,11 +157,15 @@ func (m *Manager) Connect(iid string, params map[string]interface{}) (err error)
 		}
 	}
 
+	// 设置设备已连接，数据库标记为已添加
+	d.connected = true
+
 	return nil
 }
 
 func (m *Manager) Disconnect(iid string, params map[string]interface{}) (err error) {
 
+	defer m.devices.Delete(iid)
 	d, err := m.getDevice(iid)
 	if err != nil {
 		return
@@ -165,6 +184,12 @@ func (m *Manager) HealthCheck(iid string) bool {
 		logrus.Warnf("device %s not found", iid)
 		return false
 	}
+	go func() {
+		// 还没有连接则主动连接，设备需要自行处理认证信息持久化
+		if err = m.Connect(iid, nil); err != nil {
+			return
+		}
+	}()
 
 	online := d.Online(iid)
 	logrus.Debugf("%s HealthCheck,online: %v", iid, online)
@@ -247,11 +272,7 @@ func (m *Manager) GetThingModel(iid string) (tm thingmodel.ThingModel, err error
 
 func (m *Manager) getDefiner(iid string) (df *definer.Definer, err error) {
 
-	v, ok := m.devices.Load(iid)
-	if !ok {
-		return nil, errors.New("device not exist")
-	}
-	d := v.(*device)
+	d, err := m.GetDevice(iid)
 	if d.df == nil {
 		err = ThingModelNotFoundErr
 		return

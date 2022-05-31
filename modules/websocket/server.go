@@ -2,8 +2,7 @@ package websocket
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -17,30 +16,26 @@ import (
 	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2/definer"
 )
 
-var (
-	ErrClientNotFound = errors.New("client not found")
-)
-
-// Server WebSocket服务端
-type Server struct {
-	bucket *bucket
-}
-
 func NewWebSocketServer() *Server {
 	return &Server{
 		bucket: newBucket(),
 	}
 }
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
+// Server WebSocket服务端
+type Server struct {
+	bucket *bucket
 }
 
 func (s *Server) AcceptWebSocket(c *gin.Context) {
+	var upgrader = websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
+	}
+
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		logger.Error(err)
@@ -67,23 +62,6 @@ func (s *Server) AcceptWebSocket(c *gin.Context) {
 	go cli.writeWS()
 }
 
-// SingleCast 发送单播消息
-func (s *Server) SingleCast(cliID string, data []byte) error {
-	cli := s.bucket.get(cliID)
-	if cli == nil {
-		return ErrClientNotFound
-	}
-	cli.send <- data
-	return nil
-}
-
-func (s *Server) Broadcast(areaID uint64, data []byte) {
-	s.bucket.broadcast <- broadcastData{
-		AreaID: areaID,
-		Data:   data,
-	}
-}
-
 func (s *Server) Run(ctx context.Context) {
 	logger.Info("starting websocket server")
 	go s.bucket.run()
@@ -101,11 +79,17 @@ type DeviceIncreaseEvent struct {
 	Device entity.Device `json:"device"`
 }
 
-// BroadcastMsg 设备状态,数量改变回调，会广播给所有客户端，并且触发场景
-func (s *Server) BroadcastMsg(em event.EventMessage) error {
+// MulticastMsg 设备状态、数量改变，会多播给所有订阅了主题的客户端，并且触发场景
+func (s *Server) MulticastMsg(em event.EventMessage) error {
 	ev := NewEvent(string(em.EventType))
 	areaID := em.AreaID
+	topic := fmt.Sprintf("%d/%s", areaID, em.EventType)
 	switch em.EventType {
+	case event.OnlineStatus, event.ThingModelChange:
+		ev.Data = em.Param
+		pluginID := em.Param["plugin_id"]
+		iid := em.Param["iid"]
+		topic = fmt.Sprintf("%d/%s/%s/%s", areaID, em.EventType, pluginID, iid)
 	case event.DeviceDecrease:
 	case event.DeviceIncrease:
 		ev.Data = em.Param
@@ -113,6 +97,7 @@ func (s *Server) BroadcastMsg(em event.EventMessage) error {
 		deviceID := em.GetDeviceID()
 		d, err := entity.GetDeviceByID(deviceID)
 		if err != nil {
+			logger.Error(err)
 			return err
 		}
 		attr := em.GetAttr()
@@ -125,8 +110,11 @@ func (s *Server) BroadcastMsg(em event.EventMessage) error {
 			PluginID: d.PluginID,
 			Attr:     *attr,
 		}
+		topic = fmt.Sprintf("%d/%s/%s/%s", areaID, em.EventType, d.PluginID, d.IID)
 	}
-	data, _ := json.Marshal(ev)
-	s.Broadcast(areaID, data)
+
+	logger.Debugf("multicast topic: %s msg %v", topic, em)
+
+	s.bucket.Publish(topic, ev)
 	return nil
 }

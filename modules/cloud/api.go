@@ -15,6 +15,8 @@ import (
 	jsoniter "github.com/json-iterator/go"
 )
 
+var ErrNoFirmware = errors2.New("no firmware found")
+
 type DeviceType string
 type DeviceSubType string
 
@@ -50,11 +52,6 @@ type Device struct {
 	Logo         string `json:"logo" `        // 设备logo相对路径
 	Control      string `json:"control"`      // 设备控制页面相对路径
 	Provisioning string `json:"provisioning"` // 设备置网页面相对路径
-}
-
-// SaveBrandLogos TODO 保存所有品牌logo
-func SaveBrandLogos() {
-
 }
 
 func GetBrandsWithContext(ctx context.Context) (brands []Brand, err error) {
@@ -276,7 +273,7 @@ func GetLatestFirmwareWithContext(ctx context.Context, pluginID, model string) (
 	if len(firmwares) != 0 {
 		return firmwares[0], nil
 	}
-	err = errors2.New("no firmware found")
+	err = ErrNoFirmware
 	return
 }
 

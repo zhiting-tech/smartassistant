@@ -7,6 +7,7 @@ smartcloud:
 smartassistant:
     host: 0.0.0.0
     port: 37965
+    log_port: 37966
     database:
         driver: "sqlite"
     host_runtime_path: "/mnt/data/zt-smartassistant"
@@ -15,3 +16,7 @@ smartassistant:
 
 extension:
     grpc_port: 9666
+
+datatunnel:
+    control_server_addr: "gz.sc.zhitingtech.com:5478"
+    proxy_manager_addr: "gz.sc.zhitingtech.com:5698"

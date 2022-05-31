@@ -8,7 +8,7 @@
 |---------|--------|------------------------|------------------------|
 | type    | string | 消息类型                   | response/event         |
 | service | string | 请求服务类型                 | request                |
-| event   | string | 事件类型                   | event                  |
+| event   | string | 事件类型                   | event/request          |
 | data    | Object | 消息的自定义数据               | event/request/response |
 | domain  | string | 请求消息中使用，除特殊请求外均为插件id   | request                |
 | id      | int64  | 消息ID，请求消息时必填，响应与请求id一致 | request/response       |
@@ -40,7 +40,7 @@
         "error":"invalid argument"
     }
     ```
-- 服务端发起的事件消息，如下
+- 服务端根据客户端订阅响应的事件消息，如下
     ```json
     {
         "type": "event",
@@ -53,13 +53,78 @@
 
 ## Event
 
-### 插件设备状态变更
+事件消息等同于订阅请求的响应
+
+### 订阅设备是否在线消息
+
+- data.plugin_id: 插件id，可选，不填则订阅所有插件
+- data.iid: 设备id，可选，不填则订阅所有设备
 
 ```json
 {
+  "id": 1,
+  "service": "subscribe_event",
+  "event": "online_status",
+  "data": {
+    "plugin_id": "zhiting",
+    "iid": "device_iid"
+  }
+}
+```
+
+```json
+{
+  "id": 1,
+  "success": true,
+  "err": "event invalid"
+}
+```
+
+```json
+{
+  "id": 1,
+  "type": "event",
+  "event": "online_status",
+  "data": {
+    "plugin_id": "zhiting",
+    "iid": "2762071932",
+    "online": true
+  }
+}
+```
+
+### 订阅插件设备状态变更
+
+- data.plugin_id: 插件id，可选，不填则订阅所有插件
+- data.iid: 设备id，可选，不填则订阅所有设备
+
+订阅属性
+
+```json
+{
+  "id": 1,
+  "service": "subscribe_event",
+  "event": "attribute_change",
+  "data": {
+    "plugin_id": "zhiting",
+    "iid": "device_iid"
+  }
+}
+```
+
+```json
+{
+  "id": 1,
+  "success": true,
+  "err": "event invalid"
+}
+```
+
+```json
+{
+  "id": 1,
   "type": "event",
   "event": "attribute_change",
-  "domain": "zhiting",
   "data": {
     "plugin_id": "zhiting",
     "attr": {
@@ -72,6 +137,22 @@
 ```
 
 ### 设备增加
+
+```json
+{
+  "id": 1,
+  "service": "subscribe_event",
+  "event": "device_increase"
+}
+```
+
+```json
+{
+  "id": 1,
+  "success": true,
+  "err": "event invalid"
+}
+```
 
 ```json
 {

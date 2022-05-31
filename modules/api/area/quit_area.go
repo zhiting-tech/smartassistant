@@ -43,7 +43,7 @@ func QuitArea(c *gin.Context) {
 		return
 	}
 
-	if entity.IsOwner(sessionUser.UserID) {
+	if entity.IsOwnerOfArea(sessionUser.UserID, areaID) {
 		areaTypeStr := area.AreaType.String()
 		err = errors.Wrapf(err, status.OwnerQuitErr, areaTypeStr, areaTypeStr)
 		return
@@ -63,11 +63,16 @@ func QuitArea(c *gin.Context) {
 	extension.GetExtensionServer().Notify(pb.SAEvent_del_user_ev, map[string]interface{}{
 		"ids": []int{userID},
 	})
+
+	if err = cloud.RemoveSAUserWithContext(c.Request.Context(), areaID, userID); err != nil {
+		return
+	}
+
 	if err = entity.DelUser(sessionUser.UserID); err != nil {
 		err = errors.Wrap(err, errors.InternalServerErr)
 		return
 	}
-	cloud.RemoveSAUserWithContext(c.Request.Context(), areaID, userID)
+
 	return
 
 }

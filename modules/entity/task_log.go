@@ -3,8 +3,9 @@ package entity
 import (
 	"time"
 
-	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"gorm.io/gorm"
+
+	"github.com/zhiting-tech/smartassistant/modules/types/status"
 
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 )
@@ -40,7 +41,7 @@ type TaskLog struct {
 	Result TaskResultType // 执行结果
 	Error  string
 
-	DeviceLocation string // 设备区域
+	DeviceLocation   string // 设备区域
 	DeviceDepartment string // 设备部门
 
 	TaskID        string    `gorm:"unique"` // 任务ID
@@ -131,18 +132,22 @@ func UpdateParentLog(parentTaskID string) error {
 func NewTaskLog(target interface{}, taskID string, parentTaskID *string) error {
 
 	var (
-		name     string
-		taskType TaskType
-		location  Location
+		name       string
+		taskType   TaskType
+		location   Location
 		department Department
-		areaID   uint64
+		areaID     uint64
 	)
 	switch v := target.(type) {
 	case Scene:
 		name = v.Name
 		taskType = TaskTypeManualRun
 		if v.AutoRun {
-			taskType = TaskTypeEnableAutoRun // TODO 不准确
+			if v.IsOn {
+				taskType = TaskTypeEnableAutoRun
+			} else {
+				taskType = TaskTypeDisableAutoRun
+			}
 		}
 		areaID = v.AreaID
 	case Device:
@@ -153,14 +158,14 @@ func NewTaskLog(target interface{}, taskID string, parentTaskID *string) error {
 		areaID = v.AreaID
 	}
 	taskLog := TaskLog{
-		Name:           name,
-		DeviceLocation: location.Name,
+		Name:             name,
+		DeviceLocation:   location.Name,
 		DeviceDepartment: department.Name,
-		Type:           taskType,
-		TaskID:         taskID,
-		ParentTaskID:   parentTaskID,
-		CreatedAt:      time.Now(),
-		AreaID:         areaID,
+		Type:             taskType,
+		TaskID:           taskID,
+		ParentTaskID:     parentTaskID,
+		CreatedAt:        time.Now(),
+		AreaID:           areaID,
 	}
 	return GetDB().Create(&taskLog).Error
 }

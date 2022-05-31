@@ -9,9 +9,17 @@ import (
 // bucket 管理websocket连接的桶
 type bucket struct {
 	clients    sync.Map // key->*client
-	broadcast  chan broadcastData
 	register   chan *client
 	unregister chan *client
+
+	pubsub *PubSubTrie
+}
+
+func (b *bucket) Publish(topic string, msg interface{}) {
+	b.pubsub.Publish(topic, msg)
+}
+func (b *bucket) Subscribe(topic string, fn SubscribeFunc) Subscriber {
+	return b.pubsub.Subscribe(topic, fn)
 }
 
 type broadcastData struct {
@@ -23,7 +31,7 @@ func newBucket() *bucket {
 	return &bucket{
 		register:   make(chan *client, 2),
 		unregister: make(chan *client, 2),
-		broadcast:  make(chan broadcastData),
+		pubsub:     NewPubSub(),
 	}
 }
 
@@ -31,24 +39,11 @@ func (b *bucket) run() {
 	for {
 		select {
 		case client := <-b.register:
-			//logger.Debug("register new websocket client", client.key)
+			// logger.Debug("register new websocket client", client.key)
 			b.put(client)
 		case client := <-b.unregister:
-			//logger.Debug("del websocket client", client.key)
+			// logger.Debug("del websocket client", client.key)
 			b.remove(client.key)
-		case message := <-b.broadcast:
-			b.clients.Range(func(key, value interface{}) bool {
-				cli := value.(*client)
-				if cli.areaID != message.AreaID {
-					return true
-				}
-
-				//logger.Debug("broadcast clientKey", cli.key, " AreaID ", cli.areaID)
-				select {
-				case cli.send <- message.Data:
-				}
-				return true
-			})
 		}
 	}
 }

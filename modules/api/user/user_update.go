@@ -141,7 +141,7 @@ func UpdateUser(c *gin.Context) {
 	}
 
 	if len(req.RoleIds) != 0 {
-		if entity.IsOwner(userID) {
+		if entity.IsOwnerOfArea(userID, sessionUser.AreaID) {
 			err = errors.New(status.NotAllowModifyRoleOfTheOwner)
 			return
 		}

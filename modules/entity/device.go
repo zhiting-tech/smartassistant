@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/mozillazg/go-unidecode"
 	"gorm.io/gorm/clause"
 
 	"github.com/zhiting-tech/smartassistant/pkg/thingmodel"
@@ -21,8 +22,10 @@ import (
 
 // Device 识别的设备
 type Device struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
+	ID        int    `json:"id"`
+	ParentIID string `json:"parent_iid" gorm:"column:parent_iid"`
+	Name      string `json:"name"`
+	Pinyin    string `json:"pinyin"`
 
 	UniqueIdentifier string         `json:"unique_identifier" gorm:"uniqueIndex:area_id_unique_identifier"`
 	PluginID         string         `json:"plugin_id" gorm:"uniqueIndex:area_id_iid_plugin_id"`
@@ -31,20 +34,33 @@ type Device struct {
 	Manufacturer     string         `json:"manufacturer"` // 制造商
 	Type             string         `json:"type"`         // 设备类型，如：light,switch...
 	CreatedAt        time.Time      `json:"created_at"`
-	LocationID       int            `json:"location_id"`
-	DepartmentID     int            `json:"department_id"`
 	Deleted          gorm.DeletedAt `json:"deleted"`
 	LogoType         *int           `json:"logo_type"`
 
-	AreaID uint64 `json:"area_id" gorm:"type:bigint;uniqueIndex:area_id_unique_identifier;uniqueIndex:area_id_iid_plugin_id"`
-	Area   Area   `gorm:"constraint:OnDelete:CASCADE;" json:"-"`
-
 	Shadow     datatypes.JSON `json:"-"`
 	ThingModel datatypes.JSON `json:"-"`
+
+	SyncData string `json:"-"` // 自定义的客户端同步信息
+
+	AreaID    uint64 `json:"area_id" gorm:"type:bigint;uniqueIndex:area_id_unique_identifier;uniqueIndex:area_id_iid_plugin_id"`
+	Area      Area   `gorm:"constraint:OnDelete:CASCADE;" json:"-"`
+	AreaOrder int    `gorm:"default:0"` // 设备在家庭中的排序
+
+	// 房间
+	LocationID    int `json:"location_id"`
+	LocationOrder int // 设备在房间中的排序
+
+	// 部门
+	DepartmentID    int `json:"department_id"`
+	DepartmentOrder int // 设备在部门中的排序
 }
 
 func (d Device) TableName() string {
 	return "devices"
+}
+
+func (d Device) IsSa() bool {
+	return d.Model == types.SaModel
 }
 
 func (d *Device) AfterDelete(tx *gorm.DB) (err error) {
@@ -56,6 +72,17 @@ func (d *Device) AfterDelete(tx *gorm.DB) (err error) {
 func (d *Device) BeforeCreate(tx *gorm.DB) (err error) {
 
 	d.UniqueIdentifier = fmt.Sprintf("%s_%s", d.PluginID, d.IID)
+	return
+}
+
+func (d *Device) BeforeUpdate(tx *gorm.DB) (err error) {
+
+	if tx.Statement.Changed("LocationID") {
+		tx.Select("LocationOrder").Statement.SetColumn("LocationOrder", 0)
+	}
+	if tx.Statement.Changed("DepartmentID") {
+		tx.Select("DepartmentOrder").Statement.SetColumn("DepartmentOrder", 0)
+	}
 	return
 }
 
@@ -85,13 +112,12 @@ func GetPluginDevice(areaID uint64, pluginID, iid string) (device Device, err er
 	return
 }
 
-// GetManufacturerDevice 获取厂商的设备
-func GetManufacturerDevice(areaID uint64, manufacturer, iid string) (device Device, err error) {
-	filter := Device{
-		IID:          iid,
-		Manufacturer: manufacturer,
-	}
-	err = GetDBWithAreaScope(areaID).Where(filter).First(&device).Error
+// GetPluginDevices 获取插件的所有设备
+func GetPluginDevices(areaID uint64, pluginID string) (devices []Device, err error) {
+	filter := make(map[string]interface{})
+	filter["plugin_id"] = pluginID
+
+	err = GetDBWithAreaScope(areaID).Where(filter).Find(&devices).Error
 	return
 }
 
@@ -100,19 +126,26 @@ func GetDevices(areaID uint64) (devices []Device, err error) {
 	return
 }
 
-// GetZhitingDevices 获取所有智汀设备
-func GetZhitingDevices() (devices []Device, err error) {
-	err = GetDB().Where(Device{Manufacturer: "zhiting"}).Find(&devices).Error
+func GetDevicesOrderByPinyin(areaID uint64) (devices []Device, err error) {
+	err = GetDBWithAreaScope(areaID).Order("lower(pinyin)").Find(&devices).Error
+	return
+}
+
+func GetOrderDevices(areaID uint64) (devices []Device, err error) {
+	err = GetDBWithAreaScope(areaID).Order("area_order desc,created_at").
+		Find(&devices).Error
 	return
 }
 
 func GetDevicesByLocationID(locationId int) (devices []Device, err error) {
-	err = GetDB().Order("created_at asc").Find(&devices, "location_id = ?", locationId).Error
+	err = GetDB().Order("created_at asc").
+		Find(&devices, "location_id = ?", locationId).Error
 	return
 }
 
 func GetDevicesByDepartmentID(departmentId int) (devices []Device, err error) {
-	err = GetDB().Order("created_at asc").Find(&devices, "department_id = ?", departmentId).Error
+	err = GetDB().Order("created_at asc").
+		Find(&devices, "department_id = ?", departmentId).Error
 	return
 }
 
@@ -134,16 +167,33 @@ func DelDevicesByPlgID(plgID string) (err error) {
 }
 
 func UpdateDevice(id int, updateDevice Device) (err error) {
-	device := &Device{ID: id}
-	err = GetDB().First(device).Updates(updateDevice).Error
+	d, err := GetDeviceByID(id)
 	if err != nil {
 		if errors2.Is(err, gorm.ErrRecordNotFound) {
 			err = errors.Wrap(err, status.DeviceNotExist)
 		} else {
 			err = errors.Wrap(err, errors.InternalServerErr)
 		}
+		return
+	}
+	err = GetDB().Model(&d).Updates(updateDevice).Error
+	if err != nil {
+		err = errors.Wrap(err, errors.InternalServerErr)
 	}
 	return
+}
+
+// IsDeviceExist 设备是否存在
+func IsDeviceExist(areaID uint64, pluginID, iid string) (isExist bool, err error) {
+
+	// 网关未添加则设备不更新
+	if _, err = GetPluginDevice(areaID, pluginID, iid); err != nil {
+		if errors2.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func GetSaDevice() (device Device, err error) {
@@ -152,13 +202,15 @@ func GetSaDevice() (device Device, err error) {
 }
 
 func UnBindLocationDevices(locationID int) (err error) {
-	err = GetDB().Find(&Device{}, "location_id = ?", locationID).Update("location_id", 0).Error
+	err = GetDB().Find(&Device{}, "location_id = ?", locationID).
+		Update("location_id", 0).Error
 	return
 }
 
 // UnBindDepartmentDevices 解绑部门下的设备
 func UnBindDepartmentDevices(departmentID int, tx *gorm.DB) (err error) {
-	err = tx.Model(&Device{}).Where("department_id = ?", departmentID).Update("department_id", 0).Error
+	err = tx.Model(&Device{}).Where("department_id = ?", departmentID).
+		Update("department_id", 0).Error
 	return
 }
 
@@ -175,9 +227,134 @@ func UnBindLocationDevice(deviceID int) (err error) {
 	return
 }
 
+func ReorderDevices(areaID uint64, deviceIDs []int) (err error) {
+
+	if len(deviceIDs) == 0 {
+		return
+	}
+	var devices []Device
+	if err = GetDB().Where("area_id=?", areaID).Find(&devices, deviceIDs).Error; err != nil {
+		return
+	}
+	deviceMap := make(map[int]Device)
+	for _, d := range devices {
+		deviceMap[d.ID] = d
+	}
+
+	devices = nil
+	length := len(deviceIDs)
+	for i, id := range deviceIDs {
+		if _, ok := deviceMap[id]; !ok {
+			continue
+		}
+		devices = append(devices, Device{
+			ID:        id,
+			AreaOrder: length - i})
+	}
+	return GetDB().Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"area_order"}),
+	}).Create(&devices).Error
+}
+
+// ReorderLocationDevices 重新排序房间设备
+func ReorderLocationDevices(locationID int, deviceIDs []int) (err error) {
+
+	if len(deviceIDs) == 0 {
+		return
+	}
+	var devices []Device
+	if err = GetDB().Where("location_id=?", locationID).
+		Find(&devices, deviceIDs).Error; err != nil {
+		return
+	}
+	deviceMap := make(map[int]Device)
+	for _, d := range devices {
+		deviceMap[d.ID] = d
+	}
+
+	devices = nil
+	length := len(deviceIDs)
+	for i, id := range deviceIDs {
+		if _, ok := deviceMap[id]; !ok {
+			continue
+		}
+		devices = append(devices, Device{
+			ID:            id,
+			LocationID:    locationID,
+			LocationOrder: length - i})
+	}
+
+	return GetDB().Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"location_id", "location_order"}),
+	}).Create(&devices).Error
+}
+
+// ReorderDepartmentDevices 重新排序部门设备
+func ReorderDepartmentDevices(departmentID int, deviceIDs []int) (err error) {
+
+	if len(deviceIDs) == 0 {
+		return
+	}
+	var devices []Device
+	if err = GetDB().Where("department_id=?", departmentID).
+		Find(&devices, deviceIDs).Error; err != nil {
+		return
+	}
+	deviceMap := make(map[int]Device)
+	for _, d := range devices {
+		deviceMap[d.ID] = d
+	}
+
+	devices = nil
+	length := len(deviceIDs)
+	for i, id := range deviceIDs {
+		if _, ok := deviceMap[id]; !ok {
+			continue
+		}
+		devices = append(devices, Device{
+			ID:              id,
+			DepartmentID:    departmentID,
+			DepartmentOrder: length - i})
+	}
+
+	return GetDB().Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"department_id", "department_order"}),
+	}).Create(&devices).Error
+}
+
+func GetOrderDepartmentDevices(departmentID int) (devices []Device, err error) {
+
+	var department Department
+	if department, err = GetDepartmentByID(departmentID); err != nil {
+		return
+	}
+	if err = GetDB().Where("department_id=?", department.ID).
+		Order("department_order desc,created_at").Find(&devices).Error; err != nil {
+		return
+	}
+	return
+}
+
+func GetOrderLocationDevices(locationID int) (devices []Device, err error) {
+
+	var location Location
+	if location, err = GetLocationByID(locationID); err != nil {
+		return
+	}
+
+	if err = GetDB().Where("location_id=?", location.ID).
+		Order("location_order desc,created_at").Find(&devices).Error; err != nil {
+		return
+	}
+	return
+}
+
 // CheckSAExist SA是否已存在
 func CheckSAExist(device Device, tx *gorm.DB) (err error) {
-	if device.Model == types.SaModel {
+	if device.IsSa() {
 		// sa设备已被绑定，直接返回
 		if err = tx.First(&Device{}, "model = ? and area_id=?", types.SaModel, device.AreaID).Error; err == nil {
 			return errors.Wrap(err, status.SaDeviceAlreadyBind)
@@ -187,11 +364,9 @@ func CheckSAExist(device Device, tx *gorm.DB) (err error) {
 	return nil
 }
 
-func AddDevice(d *Device, tx *gorm.DB) (err error) {
-	if err = CheckSAExist(*d, tx); err != nil {
-		return
-	}
+func CreateDevice(d *Device, tx *gorm.DB) (err error) {
 
+	d.Pinyin = unidecode.Unidecode(d.Name)
 	if err = tx.Unscoped().Clauses(clause.OnConflict{
 		Columns: []clause.Column{
 			{Name: "iid"},
@@ -211,12 +386,15 @@ func AddDevice(d *Device, tx *gorm.DB) (err error) {
 	if err = tx.First(d, filter).Error; err != nil {
 		return errors.Wrap(err, errors.InternalServerErr)
 	}
+	// CreatedAt 在上面的upsert代码中没法更新成功
+	if err = tx.Model(d).Where("id=?", d.ID).Update("CreatedAt", time.Now()).Error; err != nil {
+		return
+	}
 
 	return
 }
 
 func UpdateThingModel(d *Device) (err error) {
-
 	if err = GetDB().Unscoped().Clauses(clause.OnConflict{
 		Columns: []clause.Column{
 			{Name: "iid"},
@@ -227,6 +405,7 @@ func UpdateThingModel(d *Device) (err error) {
 			"thing_model",
 			"shadow",
 			"deleted",
+			"parent_iid",
 		}),
 	}).Create(d).Error; err != nil {
 		return errors.Wrap(err, errors.InternalServerErr)
@@ -240,14 +419,16 @@ func UpdateThingModel(d *Device) (err error) {
 	if err = GetDB().First(d, filter).Error; err != nil {
 		return errors.Wrap(err, errors.InternalServerErr)
 	}
-
 	return
 }
 
-// AddSADevice 添加SA设备
-func AddSADevice(device *Device, tx *gorm.DB) (err error) {
-	if device.Model != types.SaModel {
+// CreateSA 添加SA设备
+func CreateSA(device *Device, tx *gorm.DB) (err error) {
+	if !device.IsSa() {
 		return errors2.New("invalid sa")
+	}
+	if err = CheckSAExist(*device, tx); err != nil {
+		return
 	}
 
 	// 初始化角色
@@ -267,16 +448,12 @@ func AddSADevice(device *Device, tx *gorm.DB) (err error) {
 		return err
 	}
 
-	return AddDevice(device, tx)
+	return CreateDevice(device, tx)
 }
 
-// UpdateDeviceById 根据主键修改设备的值
-func UpdateDeviceById(id int, values interface{}, tx *gorm.DB) error {
-	return tx.Model(&Device{}).Where("id = ?", id).Updates(values).Error
-}
+// UserAttributes 获取设备所有有权限的属性
+func (d Device) UserAttributes() (attributes []Attribute, err error) {
 
-// UserControlAttributes 获取用户有控制权限的属性（包括角色权限配置）
-func (d Device) UserControlAttributes(up UserPermissions) (attributes []Attribute, err error) {
 	tm, err := d.GetThingModel()
 	if err != nil {
 		return
@@ -294,17 +471,63 @@ func (d Device) UserControlAttributes(up UserPermissions) (attributes []Attribut
 				continue
 			}
 			for _, attr := range srv.Attributes {
-				if !up.IsDeviceAttrControlPermit(d.ID, attr.AID) {
-					continue
-				}
 				if attr.NoPermission() || attr.PermissionHidden() {
 					continue
 				}
-				attributes = append(attributes, Attribute{attr})
+				attributes = append(attributes, Attribute{srv.Type, attr})
 			}
 		}
 	}
 	return
+}
+
+// TriggerableAttributes 获取设备所有可以作为触发条件的属性
+func (d Device) TriggerableAttributes() (attributes []Attribute, err error) {
+
+	attrs, err := d.UserAttributes()
+	if err != nil {
+		return
+	}
+	for _, attr := range attrs {
+		if !attr.PermissionSceneHidden() && (attr.PermissionRead() || attr.PermissionNotify()) {
+			attributes = append(attributes, attr)
+		}
+	}
+	return
+}
+
+// ControllableAttributes 获取设备所有可以控制的属性
+func (d Device) ControllableAttributes(up UserPermissions) (attributes []Attribute, err error) {
+
+	attrs, err := d.UserAttributes()
+	if err != nil {
+		return
+	}
+	for _, attr := range attrs {
+		if attr.PermissionWrite() && up.IsDeviceAttrControlPermit(d.ID, attr.AID) && !attr.PermissionSceneHidden() {
+			attributes = append(attributes, attr)
+		}
+	}
+	return
+}
+
+// IsTriggerable 判断设备可以作为触发条件被选择
+func (d Device) IsTriggerable() bool {
+	attributes, err := d.TriggerableAttributes()
+	if err != nil {
+		return false
+	}
+
+	return len(attributes) != 0
+}
+
+// IsControllable 判断设备可以作为执行任务被选择
+func (d Device) IsControllable(up UserPermissions) bool {
+	attributes, err := d.ControllableAttributes(up)
+	if err != nil {
+		return false
+	}
+	return len(attributes) != 0
 }
 
 // ControlAttributes 获取设备的属性（有写的权限）
@@ -334,7 +557,7 @@ func (d Device) ControlAttributes(withHidden bool) (attributes []Attribute, err 
 				if !withHidden && attr.PermissionHidden() {
 					continue
 				}
-				attributes = append(attributes, Attribute{attr})
+				attributes = append(attributes, Attribute{srv.Type, attr})
 			}
 		}
 	}
@@ -352,6 +575,9 @@ func (d Device) GetShadow() (shadow Shadow, err error) {
 
 // GetThingModel 获取物模型，仅物模型
 func (d Device) GetThingModel() (tm thingmodel.ThingModel, err error) {
+	if d.PluginID == "" { // 仅为客户端同步的设备没有物模型
+		return
+	}
 	if err = json.Unmarshal(d.ThingModel, &tm); err != nil {
 		return
 	}
@@ -383,8 +609,9 @@ func (d Device) GetThingModelWithState(up UserPermissions) (tm thingmodel.ThingM
 				}
 				tm.Instances[i].Services[s].Attributes[a].Val = val
 				// 没有控制权限则覆盖设备属性权限
-				if !up.IsDeviceAttrControlPermit(d.ID, attr.AID) {
-					tm.Instances[i].Services[s].Attributes[a].SetPermissions()
+				if !up.IsDeviceAttrControlPermit(d.ID, attr.AID) && !attr.PermissionHidden() {
+					tm.Instances[i].Services[s].Attributes[a].
+						RemovePermissions(thingmodel.AttributePermissionWrite)
 				}
 			}
 		}

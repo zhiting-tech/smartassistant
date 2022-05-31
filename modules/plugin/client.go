@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"sync"
 	"time"
+
+	"gorm.io/gorm"
 
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	event2 "github.com/zhiting-tech/smartassistant/pkg/event"
@@ -16,8 +16,6 @@ import (
 	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2"
 	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2/definer"
 	"github.com/zhiting-tech/smartassistant/pkg/thingmodel"
-
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 var NotExistErr = errors.New("plugin not exist")
@@ -31,8 +29,6 @@ func NewClient() *client {
 type client struct {
 	mu      sync.Mutex // clients 锁
 	clients map[string]*pluginClient
-
-	devicesCancel sync.Map
 }
 
 // DevicesDiscover 发现设备，并且通过 channel 返回给调用者
@@ -89,7 +85,13 @@ func (c *client) Connect(ctx context.Context, identify Identify, authParams map[
 	if err != nil {
 		return
 	}
-	return pc.Connect(ctx, identify.IID, authParams)
+	d := pc.Device(identify.IID)
+	das, err = d.Connect(ctx, authParams)
+	if err != nil {
+		return
+	}
+	d.WaitOnline(ctx)
+	return
 }
 
 func (c *client) Disconnect(ctx context.Context, identify Identify, authParams map[string]interface{}) (err error) {
@@ -97,36 +99,15 @@ func (c *client) Disconnect(ctx context.Context, identify Identify, authParams m
 	if err != nil {
 		return
 	}
-	err = cli.Disconnect(ctx, identify.IID, authParams)
-	if err != nil {
-		return
-	}
-
-	v, loaded := c.devicesCancel.LoadAndDelete(identify.IID)
-	if loaded {
-		if cancel, ok := v.(context.CancelFunc); ok {
-			cancel()
-		}
-	}
-	return nil
+	return cli.RemoveDevice(ctx, identify.IID, authParams)
 }
 
 func (c *client) GetAttributes(ctx context.Context, identify Identify) (das thingmodel.ThingModel, err error) {
-	req := proto.GetInstancesReq{Iid: identify.IID}
-	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
-	defer cancel()
-
 	cli, err := c.get(identify.PluginID)
 	if err != nil {
 		return
 	}
-	resp, err := cli.protoClient.GetInstances(ctx, &req)
-	if err != nil {
-		return
-	}
-	// logger.Debugf("GetInstances resp: %#v\n", resp)
-	das = ParseAttrsResp(resp)
-	return
+	return cli.Device(identify.IID).GetAttributes(ctx)
 }
 
 func (c *client) SetAttributes(ctx context.Context, pluginID string, areaID uint64, setReq sdk.SetRequest) (result []byte, err error) {
@@ -155,43 +136,18 @@ func (c *client) IsOnline(identify Identify) bool {
 		logger.Warningf("plugin %s not found", identify.PluginID)
 		return false
 	}
-	return cli.IsOnline(identify.IID)
+	return cli.Device(identify.IID).IsOnline()
 }
 
 func (c *client) OTA(ctx context.Context, identify Identify, firmwareURL string) (err error) {
-	req := proto.OTAReq{
-		Iid:         identify.IID,
-		FirmwareUrl: firmwareURL,
-	}
+
 	logger.Debugf("ota: %s, firmware url: %s", identify.IID, firmwareURL)
-	ctx, cancel := context.WithTimeout(ctx, time.Minute*10)
-	defer cancel()
 	cli, err := c.get(identify.PluginID)
 	if err != nil {
 		return
 	}
-	otaCli, err := cli.protoClient.OTA(ctx, &req)
-	if err != nil {
-		return
-	}
 
-	for {
-		var resp *proto.OTAResp
-		resp, err = otaCli.Recv()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return errors.New("ota err, eof")
-			}
-			return
-		}
-		logger.Println("ota response:", resp.Iid, resp.Step)
-		if resp.Step >= 100 {
-			return nil
-		}
-		if resp.Step < 0 {
-			return fmt.Errorf("ota err, step: %d", resp.Step)
-		}
-	}
+	return cli.Device(identify.IID).OTA(ctx, firmwareURL)
 }
 
 func (c *client) get(domain string) (*pluginClient, error) {
@@ -229,51 +185,21 @@ func (c *client) ListenStateChange(pluginID string) {
 	if err != nil {
 		return
 	}
-	pdc, err := cli.protoClient.Subscribe(cli.ctx, &emptypb.Empty{})
-	if err != nil {
-		logger.Error("state onDeviceStateChange error:", err)
-		return
-	}
-	logger.Println("StateChange recv...")
-	for {
-		var resp *proto.Event
-		resp, err = pdc.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			logger.Println(err)
-			// TODO retry
-			break
-		}
-
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					logger.Error(r)
-				}
-			}()
-			var ev sdk.Event
-			_ = json.Unmarshal(resp.Data, &ev)
-
-			if err = HandleEvent(cli, ev); err != nil {
-				logger.Errorf("handle event err:%s", err)
-			}
-		}()
-	}
-	logger.Println("StateChangeFromPlugin exit")
+	cli.ListenStateChange()
 }
 
 func HandleEvent(cli *pluginClient, ev sdk.Event) (err error) {
 	switch ev.Type {
 	case "attr_change":
-
 		var d entity.Device
 		var attrEvent definer.AttributeEvent
 		_ = json.Unmarshal(ev.Data, &attrEvent)
 
 		d, err = entity.GetPluginDevice(cli.areaID, cli.pluginID, attrEvent.IID)
 		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil
+			}
 			logger.Errorf("GetPluginDevice error:%s", err.Error())
 			return
 		}

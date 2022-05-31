@@ -1,12 +1,16 @@
 package device
 
 import (
-	"github.com/zhiting-tech/smartassistant/modules/device"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+	"github.com/mozillazg/go-unidecode"
+
+	"github.com/zhiting-tech/smartassistant/modules/device"
+	"github.com/zhiting-tech/smartassistant/modules/utils/session"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/types"
@@ -21,6 +25,9 @@ type UpdateDeviceReq struct {
 	LogoType     *int    `json:"logo_type"`
 	LocationID   int     `json:"location_id"`
 	DepartmentID int     `json:"department_id"`
+	Common       *bool   `json:"common"`
+
+	SyncData string `json:"sync_data"`
 }
 
 func (req *UpdateDeviceReq) Validate() (updateDevice entity.Device, err error) {
@@ -42,6 +49,7 @@ func (req *UpdateDeviceReq) Validate() (updateDevice entity.Device, err error) {
 			return
 		} else {
 			updateDevice.Name = *req.Name
+			updateDevice.Pinyin = unidecode.Unidecode(*req.Name)
 		}
 	}
 
@@ -126,9 +134,25 @@ func UpdateDevice(c *gin.Context) {
 			return
 		}
 	}
+	if len(req.SyncData) != 0 {
+		updateDevice.SyncData = req.SyncData
+	}
 
 	if err = entity.UpdateDevice(id, updateDevice); err != nil {
 		return
+	}
+
+	if req.Common != nil {
+		u := session.Get(c)
+		if *req.Common {
+			if err = entity.SetDeviceCommon(u.UserID, u.AreaID, id); err != nil {
+				return
+			}
+		} else {
+			if err = entity.RemoveUserCommonDevice(u.UserID, u.AreaID, id); err != nil {
+				return
+			}
+		}
 	}
 
 	return

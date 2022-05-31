@@ -33,7 +33,7 @@ func requireCode(c *gin.Context) {
 	// TODO code的处理
 	u := session.Get(c)
 	if u == nil {
-		response.HandleResponse(c, errors.New(status.RequireLogin), nil)
+		response.HandleResponse(c, errors.New(status.InvalidUserCredentials), nil)
 		c.Abort()
 		return
 	}

@@ -3,14 +3,15 @@ package main
 import (
 	"context"
 	"flag"
-	"github.com/zhiting-tech/smartassistant/modules/job"
-	"github.com/zhiting-tech/smartassistant/modules/utils/backup"
-	"github.com/zhiting-tech/smartassistant/pkg/filebrowser"
 	"math/rand"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/zhiting-tech/smartassistant/modules/job"
+	"github.com/zhiting-tech/smartassistant/modules/utils/backup"
+	"github.com/zhiting-tech/smartassistant/pkg/filebrowser"
 
 	"github.com/zhiting-tech/smartassistant/pkg/trace"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/zhiting-tech/smartassistant/modules/api/setting"
 	"github.com/zhiting-tech/smartassistant/modules/cloud"
 	"github.com/zhiting-tech/smartassistant/modules/config"
+	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/event"
 	"github.com/zhiting-tech/smartassistant/modules/extension"
 	"github.com/zhiting-tech/smartassistant/modules/logreplay"
@@ -38,6 +40,7 @@ var configFile = flag.String("c", "/mnt/data/zt-smartassistant/config/smartassis
 func main() {
 	flag.Parse()
 	conf := config.InitConfig(*configFile)
+	config.InitSAIDAndSAKeyIfEmpty(*configFile)
 	ctx, cancel := context.WithCancel(context.Background())
 	initLog(conf.Debug)
 	trace.Init("smartassistant")
@@ -46,8 +49,16 @@ func main() {
 	taskManager := task.GetManager()
 	wsServer := websocket.NewWebSocketServer()
 	httpServer := api.NewHttpServer(wsServer.AcceptWebSocket)
+	// 日志采集服务
+	logHttpSrc := logreplay.NewLogHttpServer()
+
 	saDiscoverServer := sadiscover.NewSaDiscoverServer()
 	filebrowser.GetFBOrInit()
+
+	// 初始化管理员权限
+	if err := entity.InitManagerRole(); err != nil {
+		logger.Panicln(err)
+	}
 
 	// 启动日志转发功能
 	logreplay.GetLogPlayer().EnableSave()
@@ -71,6 +82,7 @@ func main() {
 	go discovery.Listen(ctx)
 
 	go httpServer.Run(ctx)
+	go logHttpSrc.LogSrcRun(ctx)
 	go saDiscoverServer.Run(ctx)
 	go extension.GetExtensionServer().Run(ctx)
 	event.RegisterEventFunc(wsServer)
@@ -91,6 +103,11 @@ func main() {
 		// 启动数据通道
 		go cloud.StartDataTunnel(ctx)
 	}
+
+	if len(config.GetConf().Datatunnel.ControlServerAddr) > 0 && len(config.GetConf().Datatunnel.ProxyManagerAddr) > 0 {
+		go cloud.RunProxyClient(ctx)
+	}
+	backup.CheckBackupInfo()
 
 	logger.Info("SmartAssistant started")
 

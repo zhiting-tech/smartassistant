@@ -41,7 +41,7 @@ func FileUpload(c *gin.Context) {
 	req.GetFormParam(c)
 	user := session.Get(c)
 	if user == nil {
-		err = errors.Wrap(err, status.RequireLogin)
+		err = errors.Wrap(err, status.InvalidUserCredentials)
 		return
 	}
 
@@ -105,12 +105,12 @@ func (req *fileUploadReq) uploadFile(c *gin.Context) (id int, url string, err er
 	defer open.Close()
 	return file.UploadFile(file.UploadFileOption{
 		InitUploadServerOption: file.InitUploadServerOption{
-			Req: c.Request,
-			Hash: req.FileHash,
+			Req:      c.Request,
+			Hash:     req.FileHash,
 			FileName: fileUpload.Filename,
-			Open: open,
+			Open:     open,
 		},
 		UploadUserID: session.Get(c).UserID,
-		FileType: fileutils.ImageType,
+		FileType:     fileutils.ImageType,
 	})
 }

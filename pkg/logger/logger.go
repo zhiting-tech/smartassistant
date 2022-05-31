@@ -55,7 +55,8 @@ func New() *logrus.Logger {
 
 // InitLogger generate a global instance
 func InitLogger(output io.Writer, level logrus.Level, f logrus.Fields, debug bool, hooks ...logrus.Hook) {
-	newLogger.SetOutput(io.MultiWriter(output, getRemoteWriter()))
+	output = io.MultiWriter(output, getRemoteWriter())
+	newLogger.SetOutput(output)
 	newLogger.SetLevel(level)
 
 	format := &logrus.JSONFormatter{}
@@ -250,8 +251,8 @@ func (entry *Entry) Panic(args ...interface{}) {
 }
 
 func (entry *Entry) Tracef(format string, args ...interface{}) {
-	if newLogger.IsLevelEnabled(logrus.PanicLevel) {
-		entry.Logf(logrus.PanicLevel, format, args...)
+	if newLogger.IsLevelEnabled(logrus.TraceLevel) {
+		entry.Logf(logrus.TraceLevel, format, args...)
 	}
 }
 

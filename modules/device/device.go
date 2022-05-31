@@ -10,9 +10,6 @@ import (
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/plugin"
 	"github.com/zhiting-tech/smartassistant/modules/types"
-	"github.com/zhiting-tech/smartassistant/modules/types/status"
-	"github.com/zhiting-tech/smartassistant/modules/utils/url"
-	errors2 "github.com/zhiting-tech/smartassistant/pkg/errors"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
 	"github.com/zhiting-tech/smartassistant/pkg/thingmodel"
 )
@@ -25,23 +22,13 @@ func Create(areaID uint64, device *entity.Device) (err error) {
 	if err = entity.GetDB().Transaction(func(tx *gorm.DB) error {
 
 		device.AreaID = areaID
-		// Create 添加设备
-		switch device.Model {
-		case types.SaModel:
+		if device.IsSa() {
 			// 添加设备为SA时不需要添加设备影子
-			if err = entity.AddSADevice(device, tx); err != nil {
+			if err = entity.CreateSA(device, tx); err != nil {
 				return err
 			}
-		default:
-			identify := plugin.Identify{
-				PluginID: device.PluginID,
-				IID:      device.IID,
-				AreaID:   areaID,
-			}
-			if !plugin.GetGlobalClient().IsOnline(identify) {
-				return errors2.Newf(status.DeviceOffline, identify.ID())
-			}
-			if err = entity.AddDevice(device, tx); err != nil {
+		} else {
+			if err = entity.CreateDevice(device, tx); err != nil {
 				return err
 			}
 		}
@@ -66,19 +53,19 @@ func AddDevicePermissionForRoles(device entity.Device, tx *gorm.DB) (err error) 
 	}
 	for _, role := range roles {
 		// 查看角色设备权限模板配置
-		if entity.IsDeviceActionPermit(role.ID, "manage", tx) {
+		if entity.IsDeviceActionPermit(role.ID, types.ActionControl, tx) {
 			role.AddPermissionsWithDB(tx, ManagePermissions(device)...)
 		}
 
-		if entity.IsDeviceActionPermit(role.ID, "update", tx) {
+		if entity.IsDeviceActionPermit(role.ID, types.ActionUpdate, tx) {
 			role.AddPermissionsWithDB(tx, types.NewDeviceUpdate(device.ID))
 		}
 
 		// SA设备不需要配置控制和删除权限
-		if device.Model == types.SaModel {
+		if device.IsSa() {
 			continue
 		}
-		if entity.IsDeviceActionPermit(role.ID, "control", tx) {
+		if entity.IsDeviceActionPermit(role.ID, types.ActionControl, tx) {
 			var ps []types.Permission
 			ps, err = ControlPermissions(device, true)
 			if err != nil {
@@ -88,7 +75,7 @@ func AddDevicePermissionForRoles(device entity.Device, tx *gorm.DB) (err error) 
 			role.AddPermissionsWithDB(tx, ps...)
 		}
 
-		if entity.IsDeviceActionPermit(role.ID, "delete", tx) {
+		if entity.IsDeviceActionPermit(role.ID, types.ActionDelete, tx) {
 			role.AddPermissionsWithDB(tx, types.NewDeviceDelete(device.ID))
 		}
 	}
@@ -112,13 +99,33 @@ func LogoURL(req *http.Request, d entity.Device) string {
 
 // LogoInfo 获取logo的信息
 func LogoInfo(c *gin.Context, d entity.Device) (logoUrl, logo string) {
-	logoUrl = LogoURL(c.Request, d)
-	logo = plugin.GetGlobalClient().DeviceConfig(d.PluginID, d.Model).Logo
-	if d.LogoType != nil && *d.LogoType != int(types.NormalLogo) {
-		if logoInfo, ok := types.GetLogo(types.LogoType(*d.LogoType)); ok {
-			logoUrl = url.ImageUrl(c.Request, logoInfo.FileName)
-			logo = url.ImagePath(logoInfo.FileName)
-		}
+	if d.LogoType == nil || *d.LogoType == int(types.NormalLogo) {
+		return LogoURL(c.Request, d), plugin.GetGlobalClient().DeviceConfig(d.PluginID, d.Model).Logo
 	}
-	return
+	return types.LogoFromLogoType(types.LogoType(*d.LogoType), c.Request)
+
+}
+
+func TypeToLogoType(deviceType plugin.DeviceType) types.LogoType {
+
+	switch deviceType {
+	case plugin.TypeLight:
+		return types.LightLogo
+	case plugin.TypeSwitch:
+		return types.SwitchLogo
+	case plugin.TypeOutlet:
+		return types.OutletLogo
+	case plugin.TypeCurtain:
+		return types.CurtainLogo
+	case plugin.TypeGateway:
+		return types.GatewayLogo
+	case plugin.TypeSensor:
+		return types.SensorLogo
+	case plugin.TypeCamera:
+		return types.CameraLogo
+	case plugin.TypeDoorLock:
+		return types.DoorLockLogo
+	default:
+		return types.OthLogo
+	}
 }

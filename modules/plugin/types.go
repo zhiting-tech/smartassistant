@@ -53,6 +53,7 @@ const (
 	TypeTwoKeySwitch   DeviceType = "two_key_switch"   // 双键开关
 	TypeThreeKeySwitch DeviceType = "three_key_switch" // 三键开关
 	TypeWirelessSwitch DeviceType = "wireless_switch"  // 无线开关
+	TypeController     DeviceType = "controller"       // 控制器
 
 	TypeConverter  DeviceType = "converter"   // 转换器
 	TypeWallPlug   DeviceType = "wall_plug"   // 入墙插座
@@ -149,7 +150,7 @@ func (p Plugin) IsNewest() bool {
 	if p.Source == entity.SourceTypeDevelopment {
 		return true
 	}
-	return false // 方便开发更新插件
+	return false // 使得用户可以通过更新来重启插件
 
 	pluginInfo, err := entity.GetPlugin(p.ID, p.AreaID)
 	if err != nil {
@@ -193,13 +194,14 @@ func (p Plugin) UpdateOrInstall() (err error) {
 // Install 安装并且启动插件
 func (p Plugin) Install() (err error) {
 
-	// TODO 镜像没build或者build失败则不能安装
+	// FIXME 镜像没build或者build失败则不能安装
 
 	if err = p.Up(); err != nil {
 		return errors.Wrap(err, status.PluginUpFail)
 	}
 
 	var pi = entity.PluginInfo{
+		Name:     p.Name,
 		AreaID:   p.AreaID,
 		PluginID: p.ID,
 		Image:    p.Image,
@@ -224,12 +226,13 @@ func (p Plugin) Update() (err error) {
 	logger.Info("update plugin:", p.ID)
 
 	if err = p.StopAndRemovePluginImage(); err != nil {
-		logger.Error(err.Error())
+		return
 	}
 	return p.Install()
 }
 
 // StopAndRemovePluginImage 停止插件容器并删除插件镜像
+// 确保容器和镜像删除就行，如果不存在不需要报错
 func (p Plugin) StopAndRemovePluginImage() (err error) {
 
 	// 查询数据库获取当前插件的镜像
@@ -275,7 +278,7 @@ func (p Plugin) Remove(ctx context.Context) (err error) {
 	}
 
 	if err = p.StopAndRemovePluginImage(); err != nil {
-		logger.Error(err.Error())
+		return
 	}
 
 	if err = entity.DelDevicesByPlgID(p.ID); err != nil {
@@ -295,18 +298,13 @@ type AttributeChange struct {
 	Val    interface{}
 }
 
-type OnDeviceStateChange func(ac AttributeChange) error
-
-func DefaultOnDeviceStateChange(ac AttributeChange) error {
-	return errors2.New("OnDeviceStateChange not implement")
-}
-
 type DiscoverResponse struct {
 	IID          string `json:"iid"`
 	Name         string `json:"name"`
 	Model        string `json:"model"`
 	Manufacturer string `json:"manufacturer"`
 	PluginID     string `json:"plugin_id"`
+	PluginName   string `json:"plugin_name"`
 	LogoURL      string `json:"logo_url"`
 	AuthRequired bool   `json:"auth_required"`
 
@@ -337,7 +335,7 @@ func RunPlugin(plg Plugin) (containerID string, err error) {
 	target := "/app/data/"
 	logger.Debugf("mount %s to %s", source, target)
 
-	// 需要使用宿主机能识别的路径来挂载，TODO 当前实现可能导致混乱,再后面优化
+	// 需要使用宿主机能识别的路径来挂载，TODO 当前实现可能导致混乱
 	hostSource := filepath.Join(config.GetConf().SmartAssistant.HostRuntimePath,
 		"data", "plugin", plg.Brand, plg.Name)
 	hostConf := container.HostConfig{

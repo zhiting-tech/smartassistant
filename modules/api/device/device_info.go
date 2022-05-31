@@ -177,7 +177,7 @@ func BuildInfoDevice(d entity.Device, user *session.User, req *http.Request, inf
 	}
 
 	userID := user.UserID
-	if d.Model != types.SaModel {
+	if !d.IsSa() {
 		iDevice.Plugin = infoPlugin{
 			Name: d.PluginID,
 			ID:   d.PluginID,
@@ -202,35 +202,20 @@ func BuildInfoDevice(d entity.Device, user *session.User, req *http.Request, inf
 	return
 }
 
-// getDeviceAttributes 获取设备有权限的action
+// getDeviceAttributes 获取设备属性
 func getDeviceAttributes(userID int, d entity.Device, infoType infoType) (as []entity.Attribute, err error) {
 
-	up, err := entity.GetUserPermissions(userID)
-	if err != nil {
-		return
-	}
-
-	attributes, err := d.UserControlAttributes(up)
-	if err != nil {
-		return
-	}
-
-	for _, attr := range attributes {
-
-		switch infoType {
-		case WriteAttributes:
-			if !attr.PermissionWrite() {
-				continue
-			}
-		case ReadOrNotifyAttributes:
-			// 读和通知权限
-			if !attr.PermissionRead() && !attr.PermissionNotify() {
-				continue
-			}
-		default:
+	switch infoType {
+	case WriteAttributes:
+		var up entity.UserPermissions
+		up, err = entity.GetUserPermissions(userID)
+		if err != nil {
+			return
 		}
-
-		as = append(as, attr)
+		return d.ControllableAttributes(up)
+	case ReadOrNotifyAttributes:
+		return d.TriggerableAttributes()
+	default:
+		return d.UserAttributes()
 	}
-	return
 }

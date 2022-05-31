@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	device2 "github.com/zhiting-tech/smartassistant/modules/device"
+	"github.com/zhiting-tech/smartassistant/modules/plugin"
 
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
@@ -218,8 +219,16 @@ func WrapDeviceInfo(deviceID int, req *http.Request, c *gin.Context) (deviceInfo
 		return
 	}
 
-	// TODO:判断设备是否可连接
-	deviceInfo.Status = deviceNormal
+	if plugin.GetGlobalClient().IsOnline(plugin.Identify{
+		PluginID: device.PluginID,
+		IID:      device.IID,
+		AreaID:   device.AreaID,
+	}) {
+		deviceInfo.Status = deviceNormal
+	} else {
+		deviceInfo.Status = deviceDisConnect
+	}
+
 	return
 
 }

@@ -3,13 +3,16 @@ package websocket
 import (
 	"context"
 	"encoding/json"
+	errors2 "errors"
 
 	"gorm.io/gorm"
 
+	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth"
 	"github.com/zhiting-tech/smartassistant/modules/cloud"
 	"github.com/zhiting-tech/smartassistant/modules/device"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/plugin"
+	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	version2 "github.com/zhiting-tech/smartassistant/modules/utils/version"
 	"github.com/zhiting-tech/smartassistant/pkg/analytics"
@@ -26,6 +29,15 @@ type DeviceHandleParams struct {
 
 type getInstancesResp struct {
 	thingmodel.ThingModel
+	IsOnline     bool         `json:"is_online"`
+	ParentDevice ParentDevice `json:"parent_device,omitempty"`
+}
+
+type ParentDevice struct {
+	IID       string `json:"iid"`
+	DeviceID  int    `json:"device_id"`
+	Name      string `json:"name"`
+	PluginUrl string `json:"plugin_url"`
 }
 
 func GetInstances(req Request) (result interface{}, err error) {
@@ -47,21 +59,39 @@ func GetInstances(req Request) (result interface{}, err error) {
 	if err != nil {
 		return
 	}
-	result = resp
 	identify := plugin.Identify{
 		PluginID: req.Domain,
 		IID:      p.IID,
 		AreaID:   req.user.AreaID,
 	}
-	if !plugin.GetGlobalClient().IsOnline(identify) {
-		err = errors.Newf(status.DeviceOffline, identify.ID())
+	resp.IsOnline = plugin.GetGlobalClient().IsOnline(identify)
+	if d.ParentIID == "" {
+		result = resp
 		return
 	}
+
+	var pDevice entity.Device
+	pDevice, err = entity.GetPluginDevice(user.AreaID, req.Domain, d.ParentIID)
+	if err != nil {
+		return
+	}
+	pluginToken, err := oauth.GetUserPluginToken(user.UserID, req.ginCtx.Request, user.AreaID)
+	if err != nil {
+		return
+	}
+	pluginUrl, err := plugin.ControlURLWithToken(pDevice, req.ginCtx.Request, pluginToken)
+	if err != nil {
+		return
+	}
+	resp.ParentDevice.Name = pDevice.Name
+	resp.ParentDevice.PluginUrl = pluginUrl.String()
+	resp.ParentDevice.IID = pDevice.IID
+	resp.ParentDevice.DeviceID = pDevice.ID
+	result = resp
 	return
 }
 
 func SetAttrs(req Request) (result interface{}, err error) {
-
 	var sr sdk.SetRequest
 	json.Unmarshal(req.Data, &sr)
 	user := req.user
@@ -73,6 +103,12 @@ func SetAttrs(req Request) (result interface{}, err error) {
 	for _, attr := range sr.Attributes {
 		var d entity.Device
 		d, err = entity.GetPluginDevice(req.user.AreaID, req.Domain, attr.IID)
+		tm, _ := d.GetThingModel()
+		_, err = tm.GetAttribute(attr.IID, attr.AID)
+		if err != nil {
+			err = errors.New(status.AttrNotFound)
+			return
+		}
 		if err == nil {
 			if !up.IsDeviceAttrControlPermit(d.ID, attr.AID) {
 				err = errors.New(status.Deny)
@@ -114,6 +150,11 @@ type ConnectParams struct {
 
 // ConnectDevice 连接设备
 func ConnectDevice(req Request) (result interface{}, err error) {
+	if !entity.JudgePermit(req.user.UserID, types.DeviceAdd) {
+		err = errors.New(status.Deny)
+		return
+	}
+
 	var p ConnectParams
 	json.Unmarshal(req.Data, &p)
 	identify := plugin.Identify{
@@ -134,7 +175,7 @@ func ConnectDevice(req Request) (result interface{}, err error) {
 		var e entity.Device
 		isChildIns := !ins.IsGateway() && isGateway
 		if isChildIns {
-			e, err = plugin.InstanceToEntity(ins, req.Domain, req.user.AreaID)
+			e, err = plugin.InstanceToEntity(ins, req.Domain, p.IID, req.user.AreaID)
 			if err != nil {
 				logger.Error(err)
 				err = nil
@@ -190,11 +231,12 @@ func ConnectDevice(req Request) (result interface{}, err error) {
 
 // DisconnectDevice 设备断开连接（取消配对等）
 func DisconnectDevice(req Request) (result interface{}, err error) {
-	var p DeviceHandleParams
-	json.Unmarshal(req.Data, &p)
-
-	var authParams map[string]interface{}
-	if err = json.Unmarshal(req.Data, &authParams); err != nil {
+	if !entity.JudgePermit(req.user.UserID, types.DeviceDelete) {
+		err = errors.New(status.Deny)
+		return
+	}
+	var p ConnectParams
+	if err = json.Unmarshal(req.Data, &p); err != nil {
 		return
 	}
 	identify := plugin.Identify{
@@ -202,7 +244,7 @@ func DisconnectDevice(req Request) (result interface{}, err error) {
 		IID:      p.IID,
 		AreaID:   req.user.AreaID,
 	}
-	err = plugin.DisconnectDevice(context.Background(), identify, authParams)
+	err = plugin.DisconnectDevice(context.Background(), identify, p.AuthParams)
 	if err != nil {
 		logger.Errorf("disconnect device err: %s", err)
 	}
@@ -215,6 +257,10 @@ func DisconnectDevice(req Request) (result interface{}, err error) {
 		return
 	}
 	if err = entity.DelDeviceByID(d.ID); err != nil {
+		return
+	}
+
+	if err = entity.RemoveCommonDevice(d.ID); err != nil {
 		return
 	}
 
@@ -258,6 +304,12 @@ func CheckUpdate(req Request) (result interface{}, err error) {
 
 	latestFirmware, err := cloud.GetLatestFirmwareWithContext(context.TODO(), req.Domain, info.Model)
 	if err != nil {
+		if errors2.Is(err, cloud.ErrNoFirmware) {
+			result = CheckUpdateResp{
+				UpdateAvailable: false,
+				CurrentVersion:  info.Version,
+			}
+		}
 		return
 	}
 	ok, err := version2.Greater(latestFirmware.Version, info.Version)
@@ -285,6 +337,16 @@ func OTA(req Request) (result interface{}, err error) {
 		return
 	}
 
+	permission := types.Permission{
+		Action:    types.ActionManage,
+		Target:    types.DeviceTarget(d.ID),
+		Attribute: types.FwUpgrade,
+	}
+
+	if !entity.JudgePermit(req.user.UserID, permission) {
+		err = errors.New(status.Deny)
+		return
+	}
 	instances, err := d.GetThingModel()
 	if err != nil {
 		return
@@ -355,7 +417,7 @@ func ListGateways(req Request) (result interface{}, err error) {
 	}
 
 	// 遍历已添加设备获取返回支持的网关
-	ds, err := entity.GetDevices(req.user.AreaID)
+	ds, err := entity.GetPluginDevices(req.user.AreaID, req.Domain)
 	if err != nil {
 		return
 	}
@@ -432,11 +494,14 @@ type SubDevicesResp struct {
 	SupportSubDevices []SupportSubDevice `json:"support_sub_devices"` // 支持的子设备
 }
 type SubDevice struct {
-	ID        int    `json:"id"`
-	Name      string `json:"name"`
-	LogoURL   string `json:"logo_url"`
-	PluginURL string `json:"plugin_url"`
-	Control   string `json:"control"`
+	ID              int                   `json:"id"`
+	Name            string                `json:"name"`
+	LogoURL         string                `json:"logo_url"`
+	PluginURL       string                `json:"plugin_url"`
+	Control         string                `json:"control"`
+	LocationName    string                `json:"location_name"`
+	DepartmentName  string                `json:"department_name"`
+	DeviceInstances thingmodel.ThingModel `json:"device_instances"`
 }
 type SupportSubDevice struct {
 	Model   string `json:"model"`
@@ -448,16 +513,29 @@ func SubDevices(req Request) (result interface{}, err error) {
 	json.Unmarshal(req.Data, &deviceLogReq)
 	user := req.user
 	var tm thingmodel.ThingModel
-	tm, err = device.GetThingModel(user.AreaID, req.Domain, deviceLogReq.IID)
+	pluginDevice, err := entity.GetPluginDevice(user.AreaID, req.Domain, deviceLogReq.IID)
+	if err != nil {
+		return
+	}
+	up, err := entity.GetUserPermissions(req.user.UserID)
+	if err != nil {
+		return
+	}
+	tm, err = pluginDevice.GetThingModelWithState(up)
 	if err != nil {
 		return
 	}
 
-	logger.Debugf("found % instance from %s", len(tm.Instances), deviceLogReq.IID)
+	logger.Debugf("found %d instance from %s", len(tm.Instances), deviceLogReq.IID)
 	// 遍历物模型，获取子设备IID,从数据库中获取子设备列表
 	var resp SubDevicesResp
 	resp.SubDevices = make([]SubDevice, 0)
 	resp.SupportSubDevices = make([]SupportSubDevice, 0)
+
+	pluginToken, err := oauth.GetUserPluginToken(req.user.UserID, req.ginCtx.Request, req.user.AreaID)
+	if err != nil {
+		return nil, err
+	}
 	for _, instance := range tm.Instances {
 		if instance.IsGateway() {
 			continue
@@ -468,13 +546,20 @@ func SubDevices(req Request) (result interface{}, err error) {
 			logger.Error(err)
 			continue
 		}
+		location, _ := entity.GetLocationByID(d.LocationID)
+		department, _ := entity.GetDepartmentByID(d.DepartmentID)
 		subDevice := SubDevice{
-			ID:      d.ID,
-			Name:    d.Name,
-			LogoURL: device.LogoURL(req.ginCtx.Request, d),
+			ID:             d.ID,
+			Name:           d.Name,
+			LogoURL:        device.LogoURL(req.ginCtx.Request, d),
+			LocationName:   location.Name,
+			DepartmentName: department.Name,
+			DeviceInstances: thingmodel.ThingModel{
+				Instances: []thingmodel.Instance{instance},
+			},
 		}
 		var pluginURL *plugin.URL
-		pluginURL, err = plugin.ControlURL(d, req.ginCtx.Request, req.user.UserID)
+		pluginURL, err = plugin.ControlURLWithToken(d, req.ginCtx.Request, pluginToken)
 		if err != nil {
 			logger.Error(err)
 			continue

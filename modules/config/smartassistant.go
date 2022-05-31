@@ -11,6 +11,7 @@ type SmartAssistant struct {
 	Db       string   `json:"db" yaml:"db"`
 	Host     string   `json:"host" yaml:"host"`
 	Port     int      `json:"port" yaml:"port"`
+	LogPort  int      `json:"log_port" yaml:"log_port"`
 	GRPCPort int      `json:"grpc_port" yaml:"grpc_port"`
 	Database Database `json:"database" yaml:"database"`
 	// HostDataPath 宿主机runtime目录
@@ -34,6 +35,10 @@ type Database struct {
 
 func (sa SmartAssistant) HttpAddress() string {
 	return fmt.Sprintf("%s:%d", sa.Host, sa.Port)
+}
+
+func (sa SmartAssistant) LogHttpAddress() string {
+	return fmt.Sprintf("%s:%d", sa.Host, sa.LogPort)
 }
 
 func (sa SmartAssistant) GRPCAddress() string {

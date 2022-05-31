@@ -13,9 +13,11 @@ const (
 	DeviceIncrease   EventType = "device_increase"
 	DeviceDecrease   EventType = "device_decrease"
 	ThingModelChange EventType = "thing_model_change"
+	OnlineStatus     EventType = "online_status"
 )
 
 type EventMessage struct {
+	ID        int64
 	EventType EventType
 	AreaID    uint64
 	Param     map[string]interface{}
@@ -31,8 +33,8 @@ func NewEventMessage(et EventType, areaID uint64) *EventMessage {
 
 type HandleFunc func(em EventMessage) error
 
-func (e *EventMessage) SetDeviceID(deviceID int) {
-	e.Param["device_id"] = deviceID
+func (e *EventMessage) SetDeviceID(d int) {
+	e.Param["device_id"] = d
 }
 
 func (e *EventMessage) GetDeviceID() int {

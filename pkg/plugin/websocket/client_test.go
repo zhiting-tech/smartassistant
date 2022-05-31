@@ -2,18 +2,21 @@ package websocket
 
 import (
 	"encoding/json"
+	"testing"
+	"time"
+
 	"github.com/sirupsen/logrus"
+
+	"github.com/zhiting-tech/smartassistant/pkg/event"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
 	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2"
 	"github.com/zhiting-tech/smartassistant/pkg/thingmodel"
-	"testing"
-	"time"
 )
 
-const localSAURL = "http://0.0.0.0:37965"
+const localSAURL = "0.0.0.0:37965"
 
-const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJleHAiOjg2NDAwLCJhcmVhX2lkIjoyMzA2NTQ3MTM4OTU1MjI3NiwiYWNjZXNzX2NyZWF0ZV9hdCI6MTY0MjQ5NTEwNywiY2xpZW50X2lkIjoiNTc2ZjRlNDctODQ4OS00NTk5LWFjNDgtOTU5NjgyNzNiNmIwIiwic2NvcGUiOiJ1c2VyLGFyZWEsZGV2aWNlIn0.61ZucZuL0fEjEftvrmU6PLTItGXiEiiI_OPWHlehaGk"
-const pluginID = "zhiting"
+const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjozNTUxLCJleHAiOjMxNTM2MDAwMCwiYXJlYV9pZCI6NzY1NjAwMTM3NDA1MDQ0NjAsImFjY2Vzc19jcmVhdGVfYXQiOjE2NDg2MDQ5OTksImNsaWVudF9pZCI6Ijg5MGMzYWVmLWU5M2MtNDc5MS05Y2JjLWQ3NzM1OWMyODJjZSIsInNjb3BlIjoiYWxsIn0.87RRqVH3vibeJYAColDmlzg8zSzJjsef2EEqLhhsKqc"
+const pluginID = "meihuizhiju.meihuizhijuchajianbao"
 const identity = "84f703a5ead5"
 
 var client = NewClient(localSAURL, token)
@@ -23,6 +26,7 @@ func init() {
 		logrus.Println(err.Error())
 	}
 	time.Sleep(time.Second)
+	logrus.SetLevel(logrus.DebugLevel)
 }
 
 // TestGetAttributes 获取设备属性
@@ -39,14 +43,15 @@ func TestGetAttributes(t *testing.T) {
 
 // TestSetAttributes 设置设备属性
 func TestSetAttributes(t *testing.T) {
-	power := sdk.SetAttribute{IID: "0x0000000012ed37c8", AID: 1, Val: "off"}
-	brightness := sdk.SetAttribute{IID: "0x0000000017995bc5", AID: 2, Val: 10}
+	power := sdk.SetAttribute{IID: identity, AID: 9, Val: "on"}
+	// brightness := sdk.SetAttribute{IID: "0x0000000017995bc5", AID: 2, Val: 10}
 
-	err := client.SetAttributes(pluginID, identity, power, brightness)
+	err := client.SetAttributes(pluginID, identity, power /*, brightness*/)
 	if err != nil {
 		logger.Panic(err)
 		return
 	}
+	time.Sleep(time.Second * 10)
 }
 
 // TestDiscover 发现设备
@@ -59,6 +64,81 @@ func TestDiscover(t *testing.T) {
 	for _, d := range devices {
 		logrus.Println(d)
 	}
+}
+
+func TestListen(t *testing.T) {
+	client.Subscribe(string(event.OnlineStatus))
+	time.Sleep(time.Second * 50)
+}
+
+func TestConnect(t *testing.T) {
+	tm, err := client.addDevice(pluginID, identity)
+	if err != nil {
+		logrus.Println(err)
+		logger.Panic(err)
+		return
+	}
+	logger.Println(tm)
+}
+
+func TestDisconnect(t *testing.T) {
+	tm, err := client.deleteDevice(pluginID, identity)
+	if err != nil {
+		logger.Panic(err)
+		return
+	}
+	logger.Println(tm)
+}
+
+func TestPermitJoin(t *testing.T) {
+
+	attr := sdk.SetAttribute{
+		IID: identity,
+		AID: 6,
+		Val: 20,
+	}
+	err := client.SetAttributes(pluginID, identity, attr)
+	if err != nil {
+		logger.Panic(err)
+		return
+	}
+}
+
+func TestGateways(t *testing.T) {
+
+	err := client.Gateways(pluginID, "DoorSensor-EF-3.0")
+	if err != nil {
+		logger.Panic(err)
+		return
+	}
+}
+
+func TestSubDevices(t *testing.T) {
+
+	err := client.SubDevices(pluginID, identity)
+	if err != nil {
+		logger.Panic(err)
+		return
+	}
+}
+
+func TestDeviceStates(t *testing.T) {
+
+	err := client.DeviceStates(pluginID, "5c0272fffee7c66f")
+	if err != nil {
+		logger.Panic(err)
+		return
+	}
+}
+
+func TestAddSubDevice(t *testing.T) {
+	// permit join
+	TestPermitJoin(t)
+
+	// reset sensor
+
+	// wait device increase
+	time.Sleep(time.Second * 20)
 }
 
 // TestCheck 测试插件包基础功能

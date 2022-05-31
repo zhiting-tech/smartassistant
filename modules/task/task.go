@@ -59,7 +59,6 @@ func (item *Task) WithWrapper(wrappers ...WrapperFunc) *Task {
 }
 
 // Run 执行
-// TODO
 func (item *Task) Run() {
 	logger.Debug("Run ", item.ToString())
 	if item.f != nil {

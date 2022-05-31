@@ -4,28 +4,28 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	errors2 "errors"
 	"fmt"
-	websocket2 "github.com/zhiting-tech/smartassistant/modules/websocket"
-	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2"
-	"github.com/zhiting-tech/smartassistant/pkg/thingmodel"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"net/url"
 	"sync"
 	"time"
 
+	websocket2 "github.com/zhiting-tech/smartassistant/modules/websocket"
+	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2"
+	"github.com/zhiting-tech/smartassistant/pkg/thingmodel"
+
 	"github.com/gorilla/websocket"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/device"
 	"github.com/zhiting-tech/smartassistant/modules/plugin"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
 )
 
-func NewClient(url, token string) *Client {
+func NewClient(addr, token string) *Client {
 	return &Client{
-		URL:       url,
+		Addr:      addr,
 		Token:     token,
 		Formatted: false,
 	}
@@ -33,7 +33,7 @@ func NewClient(url, token string) *Client {
 
 type Client struct {
 	Conn      *websocket.Conn
-	URL       string
+	Addr      string
 	Token     string // SA登录token
 	Formatted bool   // 是否格式化输出
 	ch        chan []byte
@@ -52,8 +52,10 @@ func (c *Client) listen() {
 
 		go func(msg []byte) {
 			resp := websocket2.NewResponse(1)
-			json.Unmarshal(msg, &resp)
-			logger.Println(string(msg))
+			if err = json.Unmarshal(msg, &resp); err != nil {
+				// logrus.Error(err)
+				return
+			}
 			v, loaded := c.requests.Load(resp.ID)
 			if loaded {
 				v.(chan websocket2.Message) <- *resp
@@ -80,7 +82,7 @@ func (c *Client) Request(req websocket2.Request) (response websocket2.Message, e
 	for {
 		select {
 		case <-timeout.C:
-			err = errors2.New("request websocket timeout")
+			err = fmt.Errorf("request timeout: %s", string(msg))
 			return
 		case response = <-ch:
 			c.requests.Delete(req.ID)
@@ -117,11 +119,6 @@ func (c *Client) discover(ctx context.Context) (devices []plugin.DiscoverRespons
 				respJson, _ := json.Marshal(d.Data)
 				json.Unmarshal(respJson, &result)
 
-				for _, v := range devices {
-					if v == result.Device {
-						exist = true
-					}
-				}
 				if !exist {
 					devices = append(devices, result.Device)
 				}
@@ -135,15 +132,14 @@ func (c *Client) discover(ctx context.Context) (devices []plugin.DiscoverRespons
 }
 
 func (c *Client) Connect() (err error) {
-	addr := net.TCPAddr{
-		IP:   net.ParseIP("0.0.0.0"),
-		Port: 37965,
-	}
 	rowQuery := fmt.Sprintf("token=%s", c.Token)
 
-	u := url.URL{Scheme: "ws", Host: addr.String(), Path: "/ws", RawQuery: rowQuery, ForceQuery: true}
+	u := url.URL{Scheme: "ws", Host: c.Addr, Path: "/ws", RawQuery: rowQuery, ForceQuery: true}
 	logger.Printf("connecting to %s", u.String())
 	c.Conn, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		return
+	}
 
 	go c.listen()
 	return
@@ -180,6 +176,78 @@ func (c *Client) SetAttributes(pluginID, identify string, attr ...sdk.SetAttribu
 		Data:    data,
 	}
 	logger.Println(string(data))
+	if _, err = c.Request(req); err != nil {
+		return
+	}
+
+	return
+}
+
+func (c *Client) Gateways(pluginID, model string) (err error) {
+	gatewaysReq := struct {
+		Model string `json:"model"`
+	}{Model: model}
+	data, _ := json.Marshal(gatewaysReq)
+
+	req := websocket2.Request{
+		ID:      2,
+		Domain:  pluginID,
+		Service: "list_gateways",
+		Data:    data,
+	}
+	if _, err = c.Request(req); err != nil {
+		return
+	}
+
+	return
+}
+
+func (c *Client) SubDevices(pluginID, identify string) (err error) {
+	data, _ := json.Marshal(websocket2.DeviceHandleParams{IID: identify})
+
+	req := websocket2.Request{
+		ID:      2,
+		Domain:  pluginID,
+		Service: "sub_devices",
+		Data:    data,
+	}
+	if _, err = c.Request(req); err != nil {
+		return
+	}
+
+	return
+}
+
+func (c *Client) DeviceStates(pluginID, identify string) (err error) {
+	data, _ := json.Marshal(websocket2.DeviceHandleParams{IID: identify})
+
+	req := websocket2.Request{
+		ID:      2,
+		Domain:  pluginID,
+		Service: "device_states",
+		Data:    data,
+	}
+	if _, err = c.Request(req); err != nil {
+		return
+	}
+
+	return
+}
+
+type subscribeReq struct {
+	PluginID string `json:"plugin_id,omitempty"`
+	IID      string `json:"iid,omitempty"`
+}
+
+func (c *Client) Subscribe(event string) (err error) {
+	data, _ := json.Marshal(subscribeReq{ /*IID: "0x00000000157b4d9c666",*/ PluginID: "yeelight"})
+
+	req := websocket2.Request{
+		ID:      2,
+		Service: "subscribe_event",
+		Event:   event,
+		Data:    data,
+	}
 	if _, err = c.Request(req); err != nil {
 		return
 	}
@@ -270,7 +338,7 @@ func (c *Client) getDevices() (devices []device.Device, err error) {
 		} `json:"data,omitempty"`
 	}
 
-	api := fmt.Sprintf("%s/api/devices", c.URL)
+	api := fmt.Sprintf("%s/api/devices", c.Addr)
 	req, err := http.NewRequest("GET", api, nil)
 	if err != nil {
 		return

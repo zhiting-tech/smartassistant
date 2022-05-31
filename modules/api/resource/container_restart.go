@@ -16,6 +16,7 @@ type restartReq struct {
 var unRestartList = map[string]struct{}{
 	"smartassistant": {},
 	"zt-nginx":       {},
+	"zt-vue":         {},
 }
 
 func RestartContainer(c *gin.Context) {

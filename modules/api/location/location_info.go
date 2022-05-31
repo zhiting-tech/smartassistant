@@ -6,7 +6,6 @@ import (
 
 	device2 "github.com/zhiting-tech/smartassistant/modules/device"
 	"github.com/zhiting-tech/smartassistant/modules/plugin"
-	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
 
@@ -103,7 +102,7 @@ func WrapDevices(c *gin.Context, devices []entity.Device) (result []Device, err 
 			LogoURL: logoUrl,
 			Type:    d.Type,
 		}
-		if d.Model == types.SaModel {
+		if d.IsSa() {
 			dd.IsSA = true
 			dd.PluginID = ""
 		} else {

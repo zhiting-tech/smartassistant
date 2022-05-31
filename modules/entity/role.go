@@ -4,13 +4,12 @@ import (
 	"errors"
 	"unicode/utf8"
 
+	"gorm.io/gorm"
+
 	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
-
 	errors2 "github.com/zhiting-tech/smartassistant/pkg/errors"
-
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
-	"gorm.io/gorm"
 )
 
 const (
@@ -168,8 +167,6 @@ func (r *Role) AddPermissionsWithDB(db *gorm.DB, ps ...types.Permission) {
 
 func (r *Role) addPermission(db *gorm.DB, p types.Permission) error {
 
-	// TODO 判断是否是有效权限
-
 	permission := RolePermission{
 		Name:      p.Name,
 		RoleID:    r.ID,
@@ -181,8 +178,6 @@ func (r *Role) addPermission(db *gorm.DB, p types.Permission) error {
 }
 
 func (r *Role) DelPermission(p types.Permission) error {
-
-	// TODO 判断是否是有效权限
 
 	permission := map[string]interface{}{
 		"role_id":   r.ID,
@@ -217,6 +212,26 @@ func InitRole(db *gorm.DB, areaId uint64) (err error) {
 		return err
 	}
 	member.AddPermissionsWithDB(db, types.MemberPermission...)
+
+	return nil
+}
+
+// InitManagerRole 初始化管理员的权限，防止新增权限没有赋予管理员
+func InitManagerRole() (err error) {
+	areas, err := GetAreas()
+	if err != nil {
+		return
+	}
+
+	db := GetDB()
+	for _, area := range areas {
+		var manager Role
+		manager, err = AddManagerRoleWithDB(db, "管理员", area.ID)
+		if err != nil {
+			return err
+		}
+		manager.AddPermissionsWithDB(db, types.ManagerPermission...)
+	}
 
 	return nil
 }

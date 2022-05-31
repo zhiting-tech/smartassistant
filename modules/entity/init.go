@@ -25,6 +25,7 @@ var Tables []interface{} = []interface{}{
 	User{}, UserRole{}, Scene{}, SceneCondition{},
 	SceneTask{}, TaskLog{}, GlobalSetting{}, PluginInfo{}, Client{},
 	Department{}, DepartmentUser{}, DeviceState{}, FileInfo{}, BackupInfo{},
+	UserCommonDevice{},
 }
 
 func GetDB() *gorm.DB {

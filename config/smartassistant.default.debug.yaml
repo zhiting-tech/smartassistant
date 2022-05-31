@@ -1,10 +1,13 @@
 debug: true
 smartcloud:
+    domain: "127.0.0.1:8082" # SC地址
     tls: false
+    grpc_port: 6666
 
 smartassistant:
     host: 0.0.0.0
     port: 37965
+    log_port: 37966
     database:
         driver: "sqlite"
     host_runtime_path: "./"
@@ -13,3 +16,7 @@ smartassistant:
 
 extension:
     grpc_port: 9666
+
+datatunnel:
+    control_server_addr: "127.0.0.1:5478"
+    proxy_manager_addr: "127.0.0.1:5698"

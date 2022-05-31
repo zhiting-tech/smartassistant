@@ -58,6 +58,8 @@ func (b *BaseService) WithAttribute(attrType thingmodel.Attribute) *Attribute {
 		a.meta.Val = 0
 	case thingmodel.Enum:
 		a.meta.Val = 0
+	case thingmodel.JSON:
+		a.meta.Val = ""
 	}
 	return a
 }
@@ -89,10 +91,13 @@ func (b BaseService) Notify(attrType thingmodel.Attribute, val interface{}) erro
 	}
 	logrus.Warnf("attribute notify function not set: %s", attrType.String())
 	return nil
-
 }
 
 func (b *BaseService) SetNotifyFunc(iid string, nf NotifyFunc) {
 	b.notifyFunc = nf
 	b.iid = iid
+}
+
+func (b *BaseService) GetAttribute(attrType thingmodel.Attribute) *Attribute {
+	return b.attributeMap[attrType.String()]
 }

@@ -70,7 +70,11 @@ func bindCloud(c *gin.Context) {
 
 	// 判断是否允许找回找回凭证
 	if setting.UserCredentialFound {
-		body["area_token"] = setting2.GetAreaAuthToken(u.AreaID)
+		token, err := setting2.GetAreaAuthToken(u.AreaID)
+		if err != nil {
+			return
+		}
+		body["area_token"] = token
 	}
 
 	_, err = cloud.DoWithContext(c.Request.Context(), path, http.MethodPost, body)

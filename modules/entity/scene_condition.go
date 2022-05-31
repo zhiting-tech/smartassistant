@@ -238,6 +238,7 @@ func GetConditions(deviceID int, ae definer.AttributeEvent) (conds []SceneCondit
 }
 
 type Attribute struct {
+	ServiceType thingmodel.ServiceType `json:"service_type"`
 	thingmodel.Attribute
 }
 

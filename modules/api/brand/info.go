@@ -40,10 +40,7 @@ func GetBrandInfoWithContext(ctx context.Context, name string) (brand Brand, err
 	brand.Plugins = make([]Plugin, 0)
 
 	brand = Brand{
-		Brand: cloud.Brand{
-			LogoURL: "", // TODO 本地图片
-			Name:    name,
-		},
+		Brand: cloud.Brand{Name: name},
 	}
 
 	var installedPlgs []entity.PluginInfo

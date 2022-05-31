@@ -2,13 +2,16 @@ package config
 
 import (
 	"fmt"
-	"github.com/zhiting-tech/smartassistant/pkg/logger"
 	"net"
 	"strconv"
+
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
 )
 
 type Datatunnel struct {
-	ExportServices map[string]string `json:"export_services" yaml:"export_services"`
+	ControlServerAddr string            `json:"control_server_addr" yaml:"control_server_addr"`
+	ProxyManagerAddr  string            `json:"proxy_manager_addr" yaml:"proxy_manager_addr"`
+	ExportServices    map[string]string `json:"export_services" yaml:"export_services"`
 }
 
 func (t *Datatunnel) GetAddr(serviceName string) (addr string, ok bool) {

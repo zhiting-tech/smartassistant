@@ -5,8 +5,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"gorm.io/gorm"
+
+	"github.com/zhiting-tech/smartassistant/modules/entity"
 )
 
 func addDevice() *entity.Device {
@@ -17,7 +18,7 @@ func addDevice() *entity.Device {
 		CreatedAt:    time.Now(),
 	}
 	_ = entity.GetDB().Transaction(func(tx *gorm.DB) error {
-		return entity.AddDevice(d, tx)
+		return entity.CreateDevice(d, tx)
 	})
 	return d
 }

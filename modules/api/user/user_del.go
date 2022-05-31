@@ -3,16 +3,18 @@ package user
 import (
 	"strconv"
 
+	"github.com/zhiting-tech/smartassistant/modules/api/utils/cloud"
+
 	"github.com/zhiting-tech/smartassistant/modules/extension"
 	pb "github.com/zhiting-tech/smartassistant/pkg/extension/proto"
 
-	"github.com/zhiting-tech/smartassistant/modules/api/utils/cloud"
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
 
 	"github.com/gin-gonic/gin"
+
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 )
 
@@ -50,7 +52,7 @@ func DelUser(c *gin.Context) {
 		return
 	}
 
-	if entity.IsOwner(userID) {
+	if entity.IsOwnerOfArea(userID, sessionUser.AreaID) {
 		err = errors.New(status.Deny)
 		return
 	}

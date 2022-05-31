@@ -74,11 +74,12 @@ func verifyAccessToken(c *gin.Context) (ti oauth2.TokenInfo, err error) {
 			return ti, errors.New(status.ErrAccessTokenExpired)
 		}
 
-		if err.Error() == errors.New(status.PasswordChanged).Error() {
-			return ti, err
+		var perr = errors.New(status.PasswordChanged)
+		if err.Error() == perr.Error() {
+			return ti, perr
 		}
 
-		return ti, errors.Wrap(err, status.RequireLogin)
+		return ti, errors.Wrap(err, status.InvalidUserCredentials)
 	}
 	return
 }
@@ -87,7 +88,7 @@ func verifyAccessToken(c *gin.Context) (ti oauth2.TokenInfo, err error) {
 func RequireOwner(c *gin.Context) {
 	u := session.Get(c)
 	if u == nil {
-		response.HandleResponse(c, errors.New(status.RequireLogin), nil)
+		response.HandleResponse(c, errors.New(status.InvalidUserCredentials), nil)
 		c.Abort()
 		return
 	}
@@ -113,7 +114,7 @@ func RequireToken(c *gin.Context) {
 		c.Next()
 		return
 	}
-	response.HandleResponse(c, errors.New(status.RequireLogin), nil)
+	response.HandleResponse(c, errors.New(status.InvalidUserCredentials), nil)
 	c.Abort()
 	return
 }

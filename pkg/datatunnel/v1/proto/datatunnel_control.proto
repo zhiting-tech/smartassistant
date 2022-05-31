@@ -1,6 +1,6 @@
 syntax = "proto3";
 package proto;
-option go_package = "github.com/zhiting-tech/smartassistant/pkg/datatunnel/proto";
+option go_package = "github.com/zhiting-tech/smartassistant/pkg/datatunnel/v1/proto";
 
 service DatatunnelController {
     rpc ControlStream(stream ControlStreamData) returns (stream ControlStreamData);
