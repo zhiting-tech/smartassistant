@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sync"
@@ -32,13 +33,13 @@ func getRemoteWriter() *remoteWriter {
 }
 
 type remoteWriter struct {
-	ch     chan []byte
+	ch     chan *bytes.Buffer
 	status int32
 }
 
 func newRemoteWriter() *remoteWriter {
 	return &remoteWriter{
-		ch:     make(chan []byte, 1024),
+		ch:     make(chan *bytes.Buffer, 1024),
 		status: StatusStart,
 	}
 }
@@ -48,9 +49,8 @@ func (w *remoteWriter) Write(data []byte) (n int, err error) {
 	n = len(data)
 
 	// 传入的data是pool里面的对象，异步处理需要复制一份，否则数据会错乱
-	// TODO: 后续使用pool，降低GC
-	log := make([]byte, len(data))
-	copy(log, data)
+	log := getBuffer()
+	log.Write(data)
 
 	// 连接失败时不发送日志
 	if atomic.LoadInt32(&w.status) == StatusDisconnect {
@@ -102,10 +102,12 @@ func (w *remoteWriter) run(ctx context.Context) {
 				clear(ws)
 				break LogLoop
 			case data := <-w.ch:
-				if err = ws.WriteMessage(websocket.BinaryMessage, data); err != nil {
+				if err = ws.WriteMessage(websocket.BinaryMessage, data.Bytes()); err != nil {
 					clear(ws)
+					putBuffer(data)
 					break LogLoop
 				}
+				putBuffer(data)
 			}
 		}
 	}

@@ -183,6 +183,11 @@ func UpdateDevice(id int, updateDevice Device) (err error) {
 	return
 }
 
+func UpdateSubDevicesLocation(iid string, locationId int) (err error) {
+	err = GetDB().Model(&Device{}).Where("parent_iid = ?", iid).Updates(Device{LocationID: locationId}).Error
+	return
+}
+
 func UpdateDeviceWithMap(id int, updates map[string]interface{}) (err error) {
 	d, err := GetDeviceByID(id)
 	if err != nil {
@@ -383,6 +388,9 @@ func CheckSAExist(device Device, tx *gorm.DB) (err error) {
 
 func CreateDevice(d *Device, tx *gorm.DB) (err error) {
 
+	if d.SyncData == "" { // 防止将同步数据置为空
+		tx = tx.Omit("sync_data")
+	}
 	d.Pinyin = unidecode.Unidecode(d.Name)
 	if err = tx.Unscoped().Clauses(clause.OnConflict{
 		Columns: []clause.Column{

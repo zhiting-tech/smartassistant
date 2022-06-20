@@ -11,8 +11,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
+	"unsafe"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
@@ -82,13 +84,75 @@ func InitSAIDAndSAKeyIfEmpty(cfg string) {
 	options.SmartAssistant.ID = id
 	options.SmartAssistant.Key = key
 
+	fd, err := os.Open(cfg)
+	if err != nil {
+		logger.Panic(fmt.Sprintf("open conf file:%s error:%v", cfg, err.Error()))
+	}
+	defer fd.Close()
+
+	content, err := ioutil.ReadAll(fd)
+	if err != nil {
+		logger.Panic(fmt.Sprintf("read conf file:%s error:%v", cfg, err.Error()))
+	}
+
+	suffix := "json"
+	cfgOption := map[string]interface{}{}
+	if strings.HasSuffix(cfg, ".json") {
+		if err = jsoniter.Unmarshal(content, &cfgOption); err != nil {
+			logger.Panic(fmt.Sprintf("unmarshal conf file:%s error:%v", cfg, err.Error()))
+		}
+		suffix = "json"
+	} else if strings.HasSuffix(cfg, ".yaml") {
+		if err = yaml.Unmarshal(content, &cfgOption); err != nil {
+			logger.Panic(fmt.Sprintf("unmarshal conf file:%s error:%v", cfg, err.Error()))
+		}
+		suffix = "yaml"
+	}
+
+	getStructFieldByOffset := func(i interface{}, offset uintptr) reflect.StructField {
+		t := reflect.TypeOf(i)
+		for i := 0; i < t.NumField(); i++ {
+			if t.Field(i).Offset == offset {
+				return t.Field(i)
+			}
+		}
+		return reflect.StructField{}
+	}
+
+	getCfgFieldName := func(i interface{}, offset uintptr) string {
+		field := getStructFieldByOffset(i, offset)
+		tag, ok := field.Tag.Lookup(suffix)
+		if ok {
+			idx := strings.Index(tag, ",")
+			if idx != -1 {
+				return tag[:idx]
+			} else {
+				return tag
+			}
+		}
+
+		return field.Name
+	}
+
+	// 只更新SAID、SAKEY字段
+	smartassistantFieldName := getCfgFieldName(options, unsafe.Offsetof(options.SmartAssistant))
+	smartassistantCfg := map[interface{}]interface{}{}
+	if _, ok := cfgOption[smartassistantFieldName]; ok {
+		if _, ok = cfgOption[smartassistantFieldName].(map[interface{}]interface{}); ok {
+			smartassistantCfg = cfgOption[smartassistantFieldName].(map[interface{}]interface{})
+		}
+	}
+	smartassistantCfg[getCfgFieldName(options.SmartAssistant, unsafe.Offsetof(options.SmartAssistant.ID))] = options.SmartAssistant.ID
+	smartassistantCfg[getCfgFieldName(options.SmartAssistant, unsafe.Offsetof(options.SmartAssistant.Key))] = options.SmartAssistant.Key
+	cfgOption[smartassistantFieldName] = smartassistantCfg
+
 	var data []byte
 	if strings.HasSuffix(cfg, ".json") {
-		if data, err = jsoniter.Marshal(&options); err != nil {
+		if data, err = jsoniter.Marshal(&cfgOption); err != nil {
 			logger.Panic(fmt.Sprintf("marshal conf file:%s error:%v", cfg, err.Error()))
 		}
 	} else if strings.HasSuffix(cfg, ".yaml") {
-		if data, err = yaml.Marshal(&options); err != nil {
+		if data, err = yaml.Marshal(&cfgOption); err != nil {
 			logger.Panic(fmt.Sprintf("marshal conf file:%s error:%v", cfg, err.Error()))
 		}
 	}

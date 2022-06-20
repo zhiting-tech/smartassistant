@@ -57,7 +57,7 @@ func ThingModelToEntity(iid string, tm thingmodel.ThingModel, pluginID string, a
 		Name:         name,
 		Model:        info.Model,
 		Manufacturer: info.Manufacturer,
-		IID:          info.IID,
+		IID:          iid,
 		Type:         info.Type,
 		PluginID:     pluginID,
 		AreaID:       areaID,

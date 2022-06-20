@@ -31,6 +31,9 @@ type client struct {
 	ginCtx *gin.Context
 
 	subscribers []Subscriber
+
+	sync.Mutex
+	closed bool
 }
 
 func (cli *client) SubscribeTopic(topic string, id int64) {
@@ -43,7 +46,12 @@ func (cli *client) SubscribeTopic(topic string, id int64) {
 		return nil
 	}
 	logger.Debugf("append subscriber")
-	cli.subscribers = append(cli.subscribers, cli.bucket.Subscribe(topic, fn))
+
+	cli.Lock()
+	defer cli.Unlock()
+	if !cli.closed {
+		cli.subscribers = append(cli.subscribers, cli.bucket.Subscribe(topic, fn))
+	}
 }
 func (cli *client) SendMsg(msg *Message) {
 
@@ -192,11 +200,18 @@ func (cli *client) handleCallService(req Request) (resp *Message) {
 }
 
 func (cli *client) Close() error {
+	cli.Lock()
+	defer cli.Unlock()
 	close(cli.send)
 	for _, s := range cli.subscribers {
 		s.Unsubscribe()
 	}
-	return cli.conn.Close()
+	cli.subscribers = nil
+	if err := cli.conn.Close(); err != nil {
+		return err
+	}
+	cli.closed = true
+	return nil
 }
 
 func (cli *client) close() {
@@ -238,7 +253,10 @@ func (cli *client) writeWS() {
 				_ = cli.conn.WriteMessage(ws.CloseMessage, []byte{})
 				return
 			}
-			_ = cli.conn.WriteMessage(ws.TextMessage, msg)
+			err := cli.conn.WriteMessage(ws.TextMessage, msg)
+			if err != nil {
+				logger.Errorf("write websocket message err: %s", err)
+			}
 		}
 	}
 }

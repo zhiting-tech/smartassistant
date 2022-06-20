@@ -1,6 +1,7 @@
 package thingmodel
 
 import (
+	"encoding/json"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
 )
 
@@ -767,4 +768,78 @@ var PTZLRCruise = Attribute{
 		AttributePermissionWrite,
 		AttributePermissionNotify,
 	),
+}
+
+// Select SelectItems的选择结构
+type Select struct {
+	ID    *int64      `json:"id,omitempty"`
+	Items []SelectItem `json:"items,omitempty"`
+}
+
+type SelectItem struct {
+	ID   *int64  `json:"id,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
+func NewSelectAttr() Select {
+	var defaultID int64 = 0
+	return Select{
+		ID: &defaultID,
+		Items: make([]SelectItem, 0),
+	}
+}
+
+func (s *Select) SetDefaultID(ID int64) {
+	s.ID = &ID
+}
+
+func (s *Select) GetDefaultID() int64{
+	if s.ID == nil {
+		return 0
+	}
+	return *s.ID
+}
+
+func (s *Select) Add(item SelectItem) {
+	s.Items = append(s.Items, item)
+}
+
+func (s *Select) Remove(targetItem SelectItem) {
+	s.ForEachItems(func(index int, item SelectItem) bool {
+		if targetItem.ID == item.ID {
+			s.Items = append(s.Items[:index], s.Items[index+1:]...)
+			return false
+		}
+		return true
+	})
+}
+
+func (s *Select) Marshal() (string, error){
+	jsonData, err := json.Marshal(s)
+	if err != nil {
+		return "", err
+	}
+	return string(jsonData), nil
+}
+
+func (s *Select) ForEachItems(f func(index int, item SelectItem) bool) {
+	for i, it := range s.Items {
+		if ok := f(i, it); !ok {
+			return
+		}
+	}
+}
+
+// SelectItems 可用于sa场景选择设置
+var SelectItems = Attribute{
+	Type:    "select_items",
+	ValType: JSON,
+	Permission: SetPermissions(
+		AttributePermissionWrite,
+	),
+}
+
+func SelectUnmarshal(data []byte) (result Select, err error) {
+	err = json.Unmarshal(data, &result)
+	return
 }

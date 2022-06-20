@@ -21,11 +21,12 @@ import (
 
 // UpdateDeviceReq 修改设备接口请求参数
 type UpdateDeviceReq struct {
-	Name         *string `json:"name"`
-	LogoType     *int    `json:"logo_type"`
-	LocationID   int     `json:"location_id"`
-	DepartmentID int     `json:"department_id"`
-	Common       *bool   `json:"common"`
+	Name            *string `json:"name"`
+	LogoType        *int    `json:"logo_type"`
+	LocationID      int     `json:"location_id"`
+	DepartmentID    int     `json:"department_id"`
+	Common          *bool   `json:"common"`
+	CascadeLocation bool    `json:"cascade_location"`
 
 	SyncData string `json:"sync_data"`
 }
@@ -140,6 +141,12 @@ func UpdateDevice(c *gin.Context) {
 
 	if err = entity.UpdateDevice(id, updateDevice); err != nil {
 		return
+	}
+
+	if req.CascadeLocation == true && req.LocationID != 0 {
+		if err = entity.UpdateSubDevicesLocation(curDevice.IID, updateDevice.LocationID); err != nil {
+			return
+		}
 	}
 
 	if req.Common != nil {

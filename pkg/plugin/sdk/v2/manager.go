@@ -96,7 +96,6 @@ func (m *Manager) InitOrUpdateDevice(d Device) error {
 		}
 		if addrChange || disconnected {
 			m.devices.Store(d.Info().IID, newDevice(d))
-			oldDevice.Disconnect(d.Info().IID)
 			return nil
 		}
 
@@ -151,10 +150,14 @@ func (m *Manager) Connect(d *device, params map[string]interface{}) (err error) 
 	if d.connected {
 		return
 	}
+
+	logrus.Debugf("device %s connecting...", d.Info().IID)
 	if err = d.Connect(); err != nil {
+		logrus.Errorf("connect err: %s", err)
 		return
 	}
 
+	logrus.Debugf("device %s connected, define device's thing model", d.Info().IID)
 	d.df = definer.NewThingModelDefiner(d.Info().IID, m.notifyAttr, m.notifyThingModelChange)
 	d.Define(d.df)
 	if d.df != nil {
@@ -170,6 +173,7 @@ func (m *Manager) Connect(d *device, params map[string]interface{}) (err error) 
 	// 设置设备已连接，数据库标记为已添加
 	d.connected = true
 
+	logrus.Debugf("device %s connect and define done", d.Info().IID)
 	return nil
 }
 
@@ -182,7 +186,9 @@ func (m *Manager) Disconnect(iid string, params map[string]interface{}) (err err
 	}
 
 	if ad, authRequired := d.(AuthDevice); authRequired && ad.IsAuth() {
-		return ad.RemoveAuthorization(params)
+		if ad.Info().IID == iid {
+			return ad.RemoveAuthorization(params)
+		}
 	}
 	return d.Disconnect(iid)
 }
@@ -205,16 +211,11 @@ func (m *Manager) HealthCheck(iid string) bool {
 	if ad, ok := d.Device.(AuthDevice); ok && !ad.IsAuth() {
 
 		go func() {
-			df, err := m.getDefiner(iid)
-			if err != nil {
-				logrus.Warnf("device %s GetThingModel err %s", iid, err)
-				return
+			tme := definer.ThingModelEvent{
+				ThingModel: thingmodel.ThingModel{},
+				IID:        iid,
 			}
-
-			if err := df.UpdateThingModel(); err != nil {
-				logrus.Warnf("device %s UpdateThingModel err %s", iid, err)
-				return
-			}
+			m.notifyThingModelChange(iid, tme)
 		}()
 		return false
 	}
@@ -252,6 +253,7 @@ func (m *Manager) notifyAttr(attrEvent definer.AttributeEvent) (err error) {
 	return m.notifyEvent(ev)
 }
 
+// notifyThingModelChange iid是桥接设备iid，tme.IID是实际更新的设备iid
 func (m *Manager) notifyThingModelChange(iid string, tme definer.ThingModelEvent) (err error) {
 
 	tme.ThingModel.OTASupport, err = m.IsOTASupport(iid)

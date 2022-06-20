@@ -107,6 +107,10 @@ func (p Server) Connect(ctx context.Context, req *proto.AuthReq) (resp *proto.Ge
 		if err = p.discoverDevice(ctx, req.Iid); err != nil {
 			return
 		}
+		d, err = p.Manager.GetDevice(req.Iid)
+		if err != nil {
+			return
+		}
 	}
 	if err = p.Manager.Connect(d, params); err != nil {
 		return

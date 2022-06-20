@@ -125,6 +125,18 @@ func TypeToLogoType(deviceType plugin.DeviceType) types.LogoType {
 		return types.CameraLogo
 	case plugin.TypeDoorLock:
 		return types.DoorLockLogo
+	case plugin.TypeTemperatureAndHumiditySensor:
+		return types.TemperatureAndHumiditySensorLogo
+	case plugin.TypeWaterLeakSensor:
+		return types.WaterLeakSensorLogo
+	case plugin.TypeHumanSensors:
+		return types.HumanSensorLogo
+	case plugin.TypeWindowDoorSensor:
+		return types.WindowDoorSensorLogo
+	case plugin.TypeSmokeSensor:
+		return types.SmokeSensorLogo
+	case plugin.TypeGasSensor:
+		return types.GasSensorLogo
 	default:
 		return types.OthLogo
 	}

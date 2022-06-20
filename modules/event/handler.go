@@ -41,70 +41,67 @@ func UpdateThingModel(em event.EventMessage) (err error) {
 	if !isGatewayExist {
 		return
 	}
-	// 查询父设备所属房间
-	gDevice, err := entity.GetPluginDevice(areaID, pluginID, iid)
+	// 更新设备物模型
+	var primaryDevice entity.Device
+	primaryDevice, err = plugin.ThingModelToEntity(iid, tm, pluginID, areaID)
 	if err != nil {
+		return err
+	}
+	if err = entity.UpdateThingModel(&primaryDevice); err != nil {
 		return
 	}
-	// 更新物模型
-	isGateway := tm.IsBridge()
+
+	// 更新子设备物模型
 	for _, ins := range tm.Instances {
+		if ins.IsBridge() {
+			continue
+		}
 		var e entity.Device
 
-		isChildIns := !ins.IsBridge() && isGateway
-		if !isChildIns {
-			e, err = plugin.ThingModelToEntity(iid, tm, pluginID, areaID)
-			if err != nil {
-				return err
-			}
-			if err = entity.UpdateThingModel(&e); err != nil {
-				return
-			}
-		} else {
-			e, err = plugin.InstanceToEntity(ins, pluginID, iid, areaID)
-			if err != nil {
-				logrus.Error(err)
-				err = nil
-				continue
-			}
-			configDeviceName := e.Name
-
-			// 更新前判断子设备是否已存在
-			isChildExist, _ := entity.IsDeviceExist(areaID, pluginID, e.IID)
-			if err = entity.UpdateThingModel(&e); err != nil {
-				logrus.Error(err)
-				err = nil
-				continue
-			}
-
-			// 子设备不存在则为所有角色增加改设备的权限 && 更新子设备房间为网关默认房间
-			if !isChildExist {
-				if err = device.AddDevicePermissionForRoles(e, entity.GetDB()); err != nil {
-					logrus.Error(err)
-					err = nil
-					continue
-				}
-
-				// 更新设备房间为默认房间
-				updates := map[string]interface{}{
-					"name":           configDeviceName,
-					"location_id":    gDevice.LocationID,
-					"location_order": 0,
-				}
-				if err = entity.UpdateDeviceWithMap(e.ID, updates); err != nil {
-					logrus.Error(err)
-					err = nil
-					continue
-				}
-			}
-
-			// 发送通知有设备增加 FIXME 更新也发通知（子设备重复添加时需要通知来完成添加流程）
-			m := event.NewEventMessage(event.DeviceIncrease, areaID)
-			m.Param = map[string]interface{}{
-				"device": e,
-			}
-			event.Notify(m)
+		e, err = plugin.InstanceToEntity(ins, pluginID, iid, areaID)
+		if err != nil {
+			logrus.Error(err)
+			err = nil
+			continue
 		}
+		configDeviceName := e.Name
+
+		// 更新前判断子设备是否已存在
+		isChildExist, _ := entity.IsDeviceExist(areaID, pluginID, e.IID)
+		if err = entity.UpdateThingModel(&e); err != nil {
+			logrus.Error(err)
+			err = nil
+			continue
+		}
+
+		// 子设备不存在则为所有角色增加改设备的权限 && 更新子设备房间为网关默认房间
+		if !isChildExist {
+			if err = device.AddDevicePermissionForRoles(e, entity.GetDB()); err != nil {
+				logrus.Error(err)
+				err = nil
+				continue
+			}
+
+			// 更新设备房间为默认房间
+			updates := map[string]interface{}{
+				"name":           configDeviceName,
+				"location_id":    primaryDevice.LocationID,
+				"location_order": 0,
+			}
+			if err = entity.UpdateDeviceWithMap(e.ID, updates); err != nil {
+				logrus.Error(err)
+				err = nil
+				continue
+			}
+		}
+
+		// 发送通知有设备增加 FIXME 更新也发通知（子设备重复添加时需要通知来完成添加流程）
+		m := event.NewEventMessage(event.DeviceIncrease, areaID)
+		m.Param = map[string]interface{}{
+			"device": e,
+		}
+		event.Notify(m)
+
 	}
 	return nil
 }

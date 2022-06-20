@@ -25,6 +25,12 @@ const (
 	CameraLogo
 	DoorLockLogo
 	OthLogo
+	TemperatureAndHumiditySensorLogo
+	WaterLeakSensorLogo
+	HumanSensorLogo
+	WindowDoorSensorLogo
+	SmokeSensorLogo
+	GasSensorLogo
 )
 
 var (
@@ -34,9 +40,15 @@ var (
 		{LogoType: OutletLogo, Name: "插座", FileName: "outlet.png"},
 		{LogoType: CurtainLogo, Name: "窗帘电机", FileName: "curtain.png"},
 		{LogoType: GatewayLogo, Name: "网关", FileName: "gateway.png"},
-		{LogoType: SensorLogo, Name: "传感器", FileName: "sensor.png"},
 		{LogoType: CameraLogo, Name: "摄像头", FileName: "camera.png"},
 		{LogoType: DoorLockLogo, Name: "智能门锁", FileName: "door_lock.png"},
+		{LogoType: SensorLogo, Name: "传感器", FileName: "sensor.png"},
+		{LogoType: TemperatureAndHumiditySensorLogo, Name: "温湿度传感器", FileName: "temperature_humidity_sensor.png"},
+		{LogoType: WaterLeakSensorLogo, Name: "水浸传感器", FileName: "water_leak_sensor.png"},
+		{LogoType: HumanSensorLogo, Name: "人体传感器", FileName: "human_sensor.png"},
+		{LogoType: WindowDoorSensorLogo, Name: "门磁传感器", FileName: "window_door_sensor.png"},
+		{LogoType: SmokeSensorLogo, Name: "烟雾报警器", FileName: "smoke_sensor.png"},
+		{LogoType: GasSensorLogo, Name: "燃气报警器", FileName: "gas_sensor.png"},
 		{LogoType: OthLogo, Name: "其他", FileName: "other_device.png"},
 	}
 

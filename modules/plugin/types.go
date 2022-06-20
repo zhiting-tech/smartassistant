@@ -88,6 +88,11 @@ const (
 	networkModeHost = "host"
 )
 
+const (
+	DebugMode   = "debug"
+	ReleaseMode = "release"
+)
+
 var (
 	alwaysRestart = container.RestartPolicy{
 		Name: "always",
@@ -344,6 +349,10 @@ type DiscoverResponse struct {
 
 // RunPlugin 运行插件
 func RunPlugin(plg Plugin) (containerID string, err error) {
+	mode := ReleaseMode
+	if config.GetConf().Debug {
+		mode = DebugMode
+	}
 	conf := container.Config{
 		Image: plg.Image,
 		Env: []string{
@@ -351,6 +360,7 @@ func RunPlugin(plg Plugin) (containerID string, err error) {
 			fmt.Sprintf("AREA_ID=%d", plg.AreaID),
 			fmt.Sprintf("SA_ID=%s", config.GetConf().SmartAssistant.ID),
 			fmt.Sprintf("SDK_VERSION=%s", "2.0"),
+			fmt.Sprintf("PLUGIN_MODE=%s", mode),
 		},
 		Labels: map[string]string{
 			"com.zhiting.smartassistant.resource.service_type": "plugin",
