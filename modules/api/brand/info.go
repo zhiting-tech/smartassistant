@@ -8,6 +8,7 @@ import (
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/cloud"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
+	version2 "github.com/zhiting-tech/smartassistant/modules/utils/version"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
 )
@@ -83,7 +84,8 @@ func GetBrandInfoWithContext(ctx context.Context, name string) (brand Brand, err
 		}
 		_, pp.IsAdded = installedPlgMap[p.UID]
 		if pp.IsAdded {
-			pp.IsNewest = p.Version == installedPlgMap[p.UID].Version
+			// 判断已安装版本是否大于等于最新版本
+			pp.IsNewest, _ = version2.GreaterOrEqual(installedPlgMap[p.UID].Version, p.Version)
 			brand.IsAdded = true
 		}
 		brand.Plugins = append(brand.Plugins, pp)

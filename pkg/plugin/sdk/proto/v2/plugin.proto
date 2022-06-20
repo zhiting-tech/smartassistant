@@ -58,6 +58,7 @@ message device {
   string manufacturer = 3;
   bool authRequired = 4;
   bytes authParams = 5;
+  string type = 6;
 }
 
 message event {
@@ -81,4 +82,7 @@ message GetInstancesResp{
   string error = 2;
   bytes instances = 3;
   bool ota_support = 4;
+  bool auth_required = 5;
+  bool is_auth = 6;
+  bytes authParams = 7;
 }

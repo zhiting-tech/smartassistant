@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"sync"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 
 	"github.com/zhiting-tech/smartassistant/modules/entity"
@@ -51,31 +53,21 @@ func (c *client) DevicesDiscover(ctx context.Context) <-chan DiscoverResponse {
 	return out
 }
 
-func (c *client) DeviceConfigs() (configs []DeviceConfig) {
+func (c *client) Configs() (configs []Plugin) {
 
 	for _, cli := range c.clients {
-		for _, d := range cli.PluginConf.SupportDevices {
-			d.PluginID = cli.pluginID
-			configs = append(configs, d)
-		}
+		configs = append(configs, cli.PluginConf)
 	}
 	return
 }
 
-func (c *client) DeviceConfig(pluginID, model string) (config DeviceConfig) {
+func (c *client) Config(pluginID string) (config Plugin) {
+
 	cli, err := c.get(pluginID)
 	if err != nil {
 		return
 	}
-
-	for _, sd := range cli.PluginConf.SupportDevices {
-		if model != sd.Model {
-			continue
-		}
-		sd.PluginID = cli.pluginID
-		return sd
-	}
-	return
+	return cli.PluginConf
 }
 
 // Connect 连接设备
@@ -100,14 +92,6 @@ func (c *client) Disconnect(ctx context.Context, identify Identify, authParams m
 		return
 	}
 	return cli.RemoveDevice(ctx, identify.IID, authParams)
-}
-
-func (c *client) GetAttributes(ctx context.Context, identify Identify) (das thingmodel.ThingModel, err error) {
-	cli, err := c.get(identify.PluginID)
-	if err != nil {
-		return
-	}
-	return cli.Device(identify.IID).GetAttributes(ctx)
 }
 
 func (c *client) SetAttributes(ctx context.Context, pluginID string, areaID uint64, setReq sdk.SetRequest) (result []byte, err error) {
@@ -181,16 +165,24 @@ func (c *client) Remove(pluginID string) error {
 }
 
 func (c *client) ListenStateChange(pluginID string) {
-	cli, err := c.get(pluginID)
-	if err != nil {
-		return
+	for {
+		cli, err := c.get(pluginID)
+		if err != nil {
+			logrus.Errorf("get %s's plugin client err: %s", pluginID, err)
+			return
+		}
+		if err = cli.ListenChange(); err != nil {
+			logrus.Errorf("%s listen state change err: %s", pluginID, err)
+		}
+
+		logrus.Warningf("%s try listen state change", pluginID)
+		time.Sleep(time.Second * 2)
 	}
-	cli.ListenStateChange()
 }
 
 func HandleEvent(cli *pluginClient, ev sdk.Event) (err error) {
 	switch ev.Type {
-	case "attr_change":
+	case sdk.AttrChangeEvent:
 		var d entity.Device
 		var attrEvent definer.AttributeEvent
 		_ = json.Unmarshal(ev.Data, &attrEvent)
@@ -208,14 +200,14 @@ func HandleEvent(cli *pluginClient, ev sdk.Event) (err error) {
 		em.SetDeviceID(d.ID)
 		em.SetAttr(attrEvent)
 		event2.Notify(em)
-	case "thing_model_change":
+	case sdk.ThingModelChangeEvent:
 		var tme definer.ThingModelEvent
 		_ = json.Unmarshal(ev.Data, &tme)
 		em := event2.NewEventMessage(event2.ThingModelChange, cli.areaID)
 		em.Param = map[string]interface{}{
 			"thing_model": tme.ThingModel,
 			"iid":         tme.IID,
-			"area_id":     cli.areaID,
+			"area_id":     strconv.FormatUint(cli.areaID, 10),
 			"plugin_id":   cli.pluginID,
 		}
 		event2.Notify(em)
@@ -227,8 +219,19 @@ func ParseAttrsResp(resp *proto.GetInstancesResp) thingmodel.ThingModel {
 
 	var instances []thingmodel.Instance
 	_ = json.Unmarshal(resp.Instances, &instances)
+
+	var authParams []thingmodel.AuthParam
+	if resp.AuthRequired {
+		if err := json.Unmarshal(resp.AuthParams, &authParams); err != nil {
+			logrus.Errorf("unmarshal authParams err: %s", err)
+		}
+	}
 	return thingmodel.ThingModel{
 		Instances:  instances,
 		OTASupport: resp.OtaSupport,
+
+		AuthRequired: resp.AuthRequired,
+		IsAuth:       resp.IsAuth,
+		AuthParams:   authParams,
 	}
 }

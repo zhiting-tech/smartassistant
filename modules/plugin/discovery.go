@@ -4,12 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/client/v3/naming/endpoints"
 	"io/ioutil"
 	"net/http"
 	"strings"
-
-	"go.etcd.io/etcd/client/v3"
-	"go.etcd.io/etcd/client/v3/naming/endpoints"
 
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
@@ -114,6 +113,7 @@ func (m *discovery) registerService(key string, endpoint endpoints.Endpoint) err
 		return err
 	}
 	m.client.Add(cli)
+
 	return nil
 }
 
@@ -155,5 +155,7 @@ func GetPluginConfig(addr, pluginID string) (config Plugin, err error) {
 	if err = json.Unmarshal(data, &config); err != nil {
 		return
 	}
+	config.ID = pluginID
+
 	return
 }

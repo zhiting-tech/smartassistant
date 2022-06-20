@@ -4,19 +4,18 @@ import (
 	"context"
 	errors2 "errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
-
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/go-playground/validator/v10"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/zhiting-tech/smartassistant/modules/config"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	version2 "github.com/zhiting-tech/smartassistant/modules/utils/version"
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
-	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2"
+	"github.com/zhiting-tech/smartassistant/pkg/thingmodel"
 
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/plugin/docker"
@@ -97,10 +96,11 @@ var (
 
 // Config 插件配置
 type Config struct {
-	Name           string         `yaml:"name" json:"name" validate:"required"`                       // 插件名称
-	Version        string         `yaml:"version" json:"version" validate:"required"`                 // 版本
-	Info           string         `yaml:"info" json:"info"`                                           // 介绍
-	SupportDevices []DeviceConfig `yaml:"support_devices" json:"support_devices" validate:"required"` // 支持的设备
+	Name                 string         `yaml:"name" json:"name" validate:"required"`                       // 插件名称
+	Version              string         `yaml:"version" json:"version" validate:"required"`                 // 版本
+	Info                 string         `yaml:"info" json:"info"`                                           // 介绍
+	SupportDevices       []DeviceConfig `yaml:"support_devices" json:"support_devices" validate:"required"` // 支持的设备
+	DefaultDeviceConfigs []DeviceConfig `yaml:"default_device_configs" json:"default_device_configs"`       // 默认支持的设备类型
 }
 
 // ID 根据配置生成插件ID
@@ -291,6 +291,36 @@ func (p Plugin) Remove(ctx context.Context) (err error) {
 	return
 }
 
+func (p Plugin) SupportDeviceConfig(model string) (config DeviceConfig) {
+
+	for _, sd := range p.SupportDevices {
+		if model != sd.Model {
+			continue
+		}
+		return sd
+	}
+
+	return
+}
+
+func (p Plugin) DeviceConfig(model, deviceType string) (config DeviceConfig) {
+
+	for _, sd := range p.SupportDevices {
+		if model != sd.Model {
+			continue
+		}
+		return sd
+	}
+
+	for _, dd := range p.DefaultDeviceConfigs {
+		if dd.Type == DeviceType(deviceType) {
+			return dd
+		}
+	}
+
+	return
+}
+
 type AttributeChange struct {
 	Device entity.Device
 	IID    string
@@ -303,12 +333,13 @@ type DiscoverResponse struct {
 	Name         string `json:"name"`
 	Model        string `json:"model"`
 	Manufacturer string `json:"manufacturer"`
+	Type         string `json:"type"`
 	PluginID     string `json:"plugin_id"`
 	PluginName   string `json:"plugin_name"`
 	LogoURL      string `json:"logo_url"`
 	AuthRequired bool   `json:"auth_required"`
 
-	AuthParams []sdk.AuthParam `json:"auth_params"`
+	AuthParams []thingmodel.AuthParam `json:"auth_params"`
 }
 
 // RunPlugin 运行插件

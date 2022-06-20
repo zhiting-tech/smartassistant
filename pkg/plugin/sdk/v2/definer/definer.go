@@ -3,6 +3,7 @@ package definer
 import (
 	"encoding/json"
 	"errors"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 
@@ -34,7 +35,9 @@ func NewThingModelDefiner(iid string, fn NotifyFunc, tfn ThingModelNotifyFunc) *
 	t.notifyFunc = func(event AttributeEvent) error {
 		// 子设备的更新需要同时更新父设备
 		if event.IID != t.iid {
-			t.UpdateThingModel()
+			if err := t.UpdateThingModel(); err != nil {
+				logrus.Errorf("update thing model err: %s", err)
+			}
 		}
 		return fn(event)
 	}
@@ -48,10 +51,12 @@ type Definer struct {
 
 	notifyFunc           NotifyFunc
 	thingModelNotifyFunc ThingModelNotifyFunc
+
+	sync.Mutex
 }
 
 // Deprecated: 之后版本会删除，请使用baseService的Notify
-func (t Definer) Notify(iid string, aid int, val interface{}) error {
+func (t *Definer) Notify(iid string, aid int, val interface{}) error {
 	ev := AttributeEvent{
 		IID: iid,
 		AID: aid,
@@ -60,13 +65,17 @@ func (t Definer) Notify(iid string, aid int, val interface{}) error {
 
 	// 子设备的更新需要同时更新父设备
 	if iid != t.iid {
-		t.UpdateThingModel()
+		if err := t.UpdateThingModel(); err != nil {
+			logrus.Errorf("update thing model err: %s", err)
+		}
 	}
 
 	return t.notifyFunc(ev)
 }
 
 func (t *Definer) Instance(iid string) *Instance {
+	t.Lock()
+	defer t.Unlock()
 	if i, ok := t.instanceMap[iid]; ok {
 		return i
 	}
@@ -75,10 +84,12 @@ func (t *Definer) Instance(iid string) *Instance {
 }
 
 func (t *Definer) DelInstance(iid string) {
+	t.Lock()
+	defer t.Unlock()
 	delete(t.instanceMap, iid)
 }
 
-func (t Definer) UpdateThingModel() error {
+func (t *Definer) UpdateThingModel() error {
 	tm := t.ThingModel()
 
 	tme := ThingModelEvent{
@@ -168,6 +179,8 @@ func (t *Definer) FromJSON(data []byte) {
 
 func (t *Definer) SetNotifyFunc() {
 	logrus.Debug("definer set notify func")
+	t.Lock()
+	defer t.Unlock()
 	for _, i := range t.instanceMap {
 		for _, a := range i.Services {
 			a.SetNotifyFunc(i.IID, t.notifyFunc)
@@ -177,6 +190,8 @@ func (t *Definer) SetNotifyFunc() {
 
 func (t *Definer) ThingModel() (tm thingmodel.ThingModel) {
 
+	t.Lock()
+	defer t.Unlock()
 	for _, i := range t.instanceMap { // TODO 丢失顺序，尝试优化
 		ins := thingmodel.Instance{IID: i.IID}
 		for _, s := range i.Services {
@@ -186,7 +201,7 @@ func (t *Definer) ThingModel() (tm thingmodel.ThingModel) {
 			}
 			ins.Services = append(ins.Services, srv)
 		}
-		if ins.IsGateway() {
+		if ins.IsBridge() {
 			tm.Instances = append([]thingmodel.Instance{ins}, tm.Instances...)
 		} else {
 			tm.Instances = append(tm.Instances, ins)
@@ -195,7 +210,7 @@ func (t *Definer) ThingModel() (tm thingmodel.ThingModel) {
 	return
 }
 
-func (t Definer) SetAttribute(iid string, aid int, val interface{}) error {
+func (t *Definer) SetAttribute(iid string, aid int, val interface{}) error {
 
 	attr := t.getAttribute(iid, aid)
 	if attr == nil {
@@ -346,7 +361,7 @@ func (t *Instance) NewSpeaker() *BaseService {
 	return t.NewService(thingmodel.Speaker).
 		WithAttributes(
 			thingmodel.Volume,
-		// thingmodel.Mute
+			// thingmodel.Mute
 		)
 }
 
@@ -354,7 +369,7 @@ func (t *Instance) NewMicrophone() *BaseService {
 	return t.NewService(thingmodel.Microphone).
 		WithAttributes(
 			thingmodel.Volume,
-		// thingmodel.Mute
+			// thingmodel.Mute
 		)
 }
 
@@ -378,6 +393,25 @@ func (t *Instance) NewOperatingMode() *BaseService {
 func (t *Instance) NewMediaNegotiation() *BaseService {
 	return t.NewService(thingmodel.MediaNegotiation).WithAttributes(
 		thingmodel.WebRtcControl, thingmodel.Answer)
+}
+
+// NewPTZ 摄像头云台控制功能
+func (t *Instance) NewPTZ() *BaseService {
+	return t.NewService(thingmodel.PTZ).WithAttributes(
+		thingmodel.PTZMove, thingmodel.PTZLRCruise, thingmodel.PTZTDCruise)
+}
+
+// NewMedia 摄像头视频相关配置
+func (t *Instance) NewMedia() *BaseService {
+	return t.NewService(thingmodel.Media).WithAttributes(
+		thingmodel.MediaResolutionOptions,
+		thingmodel.MediaResolution,
+		thingmodel.MediaFrameRateLimit,
+		thingmodel.MediaBitRateLimit,
+		thingmodel.MediaEncodingInterval,
+		thingmodel.MediaQuality,
+		thingmodel.MediaGovLength,
+	)
 }
 
 type Service struct {

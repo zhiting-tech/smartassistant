@@ -27,8 +27,13 @@ type device struct {
 	closed chan struct{}
 }
 
+func (d *device) ID() string {
+	return fmt.Sprintf("device(%d/%s/%s)", d.areaID, d.pluginID, d.iid)
+}
+
 // WaitOnline 等待直到设备在线
 func (d *device) WaitOnline(ctx context.Context) error {
+	logger.Debugf("%s online waiting...", d.ID())
 
 	if _, ok := ctx.Deadline(); !ok {
 		var cancel context.CancelFunc
@@ -43,7 +48,7 @@ func (d *device) WaitOnline(ctx context.Context) error {
 				return nil
 			}
 		case <-ctx.Done():
-			return errors.New("wait online timeout")
+			return fmt.Errorf("%s wait online timeout", d.ID())
 		}
 	}
 }
@@ -60,21 +65,21 @@ func (d *device) HealthCheck() {
 }
 
 func (d *device) healthChecking() {
-	logger.Debugf("%s start health check", d.iid)
+	logger.Debugf("%s start health check", d.ID())
 
 	// 马上发起一次请求
 	if err := d.healthCheck(); err != nil {
-		logger.Errorf("%s health check err: %s", d.iid, err.Error())
+		logger.Errorf("%s health check err: %s", d.ID(), err.Error())
 	}
 	healthCheckTicker := time.NewTicker(healthCheckInterval)
 	for {
 		select {
 		case <-d.closed:
-			logger.Debugf("%s health check done", d.iid)
+			logger.Debugf("%s health check done", d.ID())
 			return
 		case <-healthCheckTicker.C:
 			if err := d.healthCheck(); err != nil {
-				logger.Errorf("%s health check err: %s", d.iid, err.Error())
+				logger.Errorf("%s health check err: %s", d.ID(), err.Error())
 			}
 		}
 	}
@@ -99,12 +104,12 @@ func (d *device) healthCheck() error {
 		"online":    resp.Online,
 	}
 	if !d.IsOnline() && resp.Online { // online
-		logger.Infof("%s %s back to online", d.pluginID, d.iid)
+		logger.Infof("%s back to online", d.ID())
 		event2.Notify(em)
 	}
 
 	if d.IsOnline() && !resp.Online { // offline
-		logger.Infof("%s %s offline", d.pluginID, d.iid)
+		logger.Infof("%s offline", d.ID())
 		event2.Notify(em)
 	}
 
@@ -129,7 +134,7 @@ func (d *device) Connect(ctx context.Context, authParams map[string]interface{})
 		return
 	}
 	das = ParseAttrsResp(resp)
-	logger.Debugf("connect resp: %#v\n", das)
+	logger.Debugf("%s connect resp: %#v\n", d.ID(), das)
 	return
 }
 
@@ -180,16 +185,15 @@ func (d *device) OTA(ctx context.Context, firmwareURL string) (err error) {
 		resp, err = otaCli.Recv()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				return errors.New("ota err, eof")
+				return fmt.Errorf("%s ota err, eof", d.ID())
 			}
 			return
 		}
-		logger.Println("ota response:", resp.Iid, resp.Step)
 		if resp.Step >= 100 {
 			return nil
 		}
 		if resp.Step < 0 {
-			return fmt.Errorf("ota err, step: %d", resp.Step)
+			return fmt.Errorf("%s ota err, step: %d", d.ID(), resp.Step)
 		}
 	}
 }

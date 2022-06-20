@@ -1,6 +1,8 @@
 package thingmodel
 
-import "github.com/zhiting-tech/smartassistant/pkg/logger"
+import (
+	"github.com/zhiting-tech/smartassistant/pkg/logger"
+)
 
 type ValType string
 
@@ -9,6 +11,7 @@ func (t ValType) String() string {
 }
 
 const (
+	Int     = ValType("int")
 	Int32   = ValType("int32")
 	Int64   = ValType("int64")
 	String  = ValType("string")
@@ -53,6 +56,7 @@ type Attribute struct {
 
 	ValType ValType     `json:"val_type"`
 	Val     interface{} `json:"val"`
+	Default interface{} `json:"default,omitempty"`
 	Min     interface{} `json:"min,omitempty"`
 	Max     interface{} `json:"max,omitempty"`
 }
@@ -67,7 +71,7 @@ func (t Attribute) GetString() string {
 
 func (t Attribute) GetInt() int {
 	switch t.ValType {
-	case Int64, Int32, Float64, Float32:
+	case Int, Int64, Int32, Float64, Float32:
 		switch v := t.Val.(type) {
 		case int:
 			return v
@@ -76,6 +80,8 @@ func (t Attribute) GetInt() int {
 		default:
 			logger.Warnf("invalid val type(%s) of %s", v, t.Type)
 		}
+	default:
+		logger.Warnf("invalid val type(%s) of %s", t.ValType, t.Type)
 	}
 	return 0
 }
@@ -132,6 +138,20 @@ type PeerConnectionReq struct {
 type PeerConnectionResp struct {
 	Id     int64  `json:"id"`     // 与PeerConnectionReq的id一致
 	Answer string `json:"answer"` // LocalDescription 本地SDP描述信息
+}
+
+const (
+	SubTypeBle = "ble" // 蓝牙
+	SubTypeZb  = "zb"  // zigbee
+)
+
+// SubType 子设备类型
+var SubType = Attribute{
+	Type:    "sub_type",
+	ValType: String,
+	Permission: SetPermissions(
+		AttributePermissionRead,
+	),
 }
 
 // Volume 音量
@@ -230,6 +250,14 @@ var Version = Attribute{
 // Name 设备名称
 var Name = Attribute{
 	Type:    "name",
+	ValType: String,
+	Permission: SetPermissions(
+		AttributePermissionRead,
+	),
+}
+
+var Type = Attribute{
+	Type:    "type",
 	ValType: String,
 	Permission: SetPermissions(
 		AttributePermissionRead,
@@ -605,7 +633,7 @@ var WebRtcControl = Attribute{
 	Permission: SetPermissions(
 		AttributePermissionRead,
 		AttributePermissionWrite,
-		AttributePermissionHidden,
+		AttributePermissionSceneHidden,
 	),
 }
 
@@ -627,5 +655,116 @@ var StreamingStatus = Attribute{
 		AttributePermissionRead,
 		AttributePermissionNotify,
 		AttributePermissionHidden,
+	),
+}
+
+// PTZMove 摄像头云台持续移动：{"pan":1,"tilt":0,"zoom":0} pan（水平移动速度:0.0-1.0） tilt（垂直移动速度:0.0-1.0）zoom：放大缩小
+var PTZMove = Attribute{
+	Type:    "move",
+	ValType: String, // PTZMoveParam json
+	Permission: SetPermissions(
+		AttributePermissionWrite,
+	),
+}
+
+// MediaResolutionOptions 摄像头分辨率可设属性
+var MediaResolutionOptions = Attribute{
+	Type:    "resolution_options",
+	ValType: String,
+	Permission: SetPermissions(
+		AttributePermissionRead,
+	),
+}
+
+// MediaResolution 摄像头分辨率属性
+var MediaResolution = Attribute{
+	Type:    "resolution",
+	ValType: String,
+	Permission: SetPermissions(
+		AttributePermissionRead,
+		AttributePermissionWrite,
+		AttributePermissionNotify,
+		AttributePermissionSceneHidden,
+	),
+}
+
+// MediaFrameRateLimit 摄像头帧率
+var MediaFrameRateLimit = Attribute{
+	Type:    "frame_rate_limit",
+	ValType: Int32,
+	Permission: SetPermissions(
+		AttributePermissionRead,
+		AttributePermissionWrite,
+		AttributePermissionNotify,
+		AttributePermissionHidden,
+	)}
+
+// MediaBitRateLimit 摄像头码率
+var MediaBitRateLimit = Attribute{
+	Type:    "bitrate_limit",
+	ValType: Int32,
+	Permission: SetPermissions(
+		AttributePermissionRead,
+		AttributePermissionWrite,
+		AttributePermissionNotify,
+		AttributePermissionHidden,
+	),
+}
+
+// MediaEncodingInterval 摄像头编码区间
+var MediaEncodingInterval = Attribute{
+	Type:    "encoding_interval",
+	ValType: Int32,
+	Permission: SetPermissions(
+		AttributePermissionRead,
+		AttributePermissionWrite,
+		AttributePermissionNotify,
+		AttributePermissionHidden,
+	),
+}
+
+// MediaQuality 摄像头视频质量
+var MediaQuality = Attribute{
+	Type:    "media_quality",
+	ValType: Float32,
+	Permission: SetPermissions(
+		AttributePermissionRead,
+		AttributePermissionWrite,
+		AttributePermissionNotify,
+		AttributePermissionHidden,
+	),
+}
+
+// MediaGovLength 摄像头I帧间隔长度
+var MediaGovLength = Attribute{
+	Type:    "gov_length",
+	ValType: Int32,
+	Permission: SetPermissions(
+		AttributePermissionRead,
+		AttributePermissionWrite,
+		AttributePermissionNotify,
+		AttributePermissionHidden,
+	),
+}
+
+// PTZTDCruise 摄像头云台上下巡航 （开始：td_start 停止：td_stop）
+var PTZTDCruise = Attribute{
+	Type:    "top_down_cruise",
+	ValType: String,
+	Permission: SetPermissions(
+		AttributePermissionRead,
+		AttributePermissionWrite,
+		AttributePermissionNotify,
+	),
+}
+
+// PTZLRCruise 摄像头云台左右巡航 （开始：lr_start 停止：lr_stop）
+var PTZLRCruise = Attribute{
+	Type:    "left_right_cruise",
+	ValType: String,
+	Permission: SetPermissions(
+		AttributePermissionRead,
+		AttributePermissionWrite,
+		AttributePermissionNotify,
 	),
 }

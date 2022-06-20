@@ -309,7 +309,6 @@ func (m *LocalManager) wrapSceneFunc(sc entity.Scene) (f TaskFunc) {
 				}
 				deviceID := sceneTask.DeviceID
 				var device entity.Device
-				entity.GetDB().Unscoped().First(&device, deviceID)
 				device, err := entity.GetDeviceByIDWithUnscoped(deviceID)
 				if err == nil {
 					m.pushTask(task, device)

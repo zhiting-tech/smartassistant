@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,16 +31,20 @@ type DeviceConfig struct {
 	Logo         string `json:"logo" yaml:"logo"`                 // 设备logo相对路径
 	Control      string `json:"control" yaml:"control"`           // 设备控制页面相对路径
 	Provisioning string `json:"provisioning" yaml:"provisioning"` // 设备置网页面相对路径
-	PluginID     string `json:"-"`
 
 	// SupportGateways 支持网关列表，仅子设备时有值
 	SupportGateways []Gateway `json:"support_gateways,omitempty"`
 
 	// Protocol 设备连接云端的协议类型，TCP/MQTT，当前仅美汇智居设备支持配置
 	Protocol string `json:"protocol,omitempty"`
+
+	// 设备是否支持zigbee
+	ZigbeeSupport bool `json:"zigbee_support" yaml:"zigbee_support"`
+	// 设备是否支持蓝牙
+	BleSupport bool `json:"ble_support" yaml:"ble_support"`
 }
 
-// WrapProvisioning 包装设备添加页，添加参数。TODO 当前实现由于插件配置的地址中含有#符号，需要特殊处理
+// WrapProvisioning 包装设备添加页，添加参数。FIXME 当前实现由于插件配置的地址中含有#符号，需要特殊处理
 func (dc DeviceConfig) WrapProvisioning(token, pluginID string) (provisioning string, err error) {
 
 	u, err := url.Parse(dc.Provisioning)
@@ -47,16 +52,28 @@ func (dc DeviceConfig) WrapProvisioning(token, pluginID string) (provisioning st
 		return
 	}
 	if u.Fragment != "" {
-		var q url.Values
-		q, err = url.ParseQuery(u.Fragment)
-		if err != nil {
-			return
-		}
-		q.Add("token", token)
-		q.Add("plugin_id", pluginID)
-		u.Fragment, err = url.QueryUnescape(q.Encode())
-		if err != nil {
-			return
+		if strings.Contains(u.Fragment, "?") {
+			var q url.Values
+			q, err = url.ParseQuery(u.Fragment)
+			if err != nil {
+				return
+			}
+			q.Add("token", token)
+			q.Add("plugin_id", pluginID)
+			u.Fragment, err = url.QueryUnescape(q.Encode())
+			if err != nil {
+				return
+			}
+		} else {
+			q := make(url.Values)
+			q.Add("token", token)
+			q.Add("plugin_id", pluginID)
+			var queryStr string
+			queryStr, err = url.QueryUnescape(q.Encode())
+			if err != nil {
+				return
+			}
+			u.Fragment = u.Fragment + "?" + queryStr
 		}
 	} else {
 		q := u.Query()
@@ -97,7 +114,6 @@ func (id Identify) ID() string {
 // Client 与插件服务交互的客户端
 type Client interface {
 	DevicesDiscover(ctx context.Context) <-chan DiscoverResponse
-	GetAttributes(ctx context.Context, identify Identify) (thingmodel.ThingModel, error)
 	SetAttributes(ctx context.Context, pluginID string, areaID uint64, setReq sdk.SetRequest) (result []byte, err error)
 	IsOnline(identify Identify) bool
 
@@ -108,10 +124,11 @@ type Client interface {
 	// Disconnect 与设备断开连接
 	Disconnect(ctx context.Context, identify Identify, authParams map[string]interface{}) error
 
-	// DeviceConfig 设备的配置
-	DeviceConfig(pluginID, model string) DeviceConfig
-	// DeviceConfigs 所有设备的配置
-	DeviceConfigs() []DeviceConfig
+	// Configs 所有插件的配置
+	Configs() []Plugin
+
+	// Config 插件的配置
+	Config(pluginID string) Plugin
 }
 
 type Info struct {

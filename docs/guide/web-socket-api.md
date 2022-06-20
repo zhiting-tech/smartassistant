@@ -468,7 +468,26 @@
         ]
       }
     ],
-    "ota_support": true
+    "sync_data": "",
+    "ota_support": true,
+    "auth_required": true,
+    "is_auth": true,
+    "auth_params": [
+      {
+        "name": "pin",
+        "type": "string",
+        "required": true,
+        "default": "",
+        "min": 0,
+        "max": 10,
+        "options": [
+          {
+            "name": "A",
+            "val": "a"
+          }
+        ]
+      }
+    ]
   },
   "success": true
 }
@@ -710,11 +729,15 @@
       {
         "name": "motion_sensor",
         "logo_url": "www.example.com/logo.png",
-        "plugin_url": "www.example.com/plugin/index.html"
+        "plugin_url": "www.example.com/plugin/index.html",
+        "zigbee_support": true,
+        "ble_support": false
       }
     ],
     "support_sub_devices": [
       {
+        "zigbee_support": true,
+        "ble_support": false,
         "model": "motion_sensor",
         "logo_url": "www.example.com/logo.png",
         "provisioning_url": "www.example.com/plugin/provisioning.html"

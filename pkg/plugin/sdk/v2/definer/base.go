@@ -38,28 +38,34 @@ func (b *BaseService) WithAttributes(attrTypes ...thingmodel.Attribute) *BaseSer
 	return b
 }
 
-func (b *BaseService) WithAttribute(attrType thingmodel.Attribute) *Attribute {
+func (b *BaseService) WithAttribute(attr thingmodel.Attribute) *Attribute {
 
-	a := NewAttribute(attrType)
-	b.attributeMap[attrType.String()] = a
+	a := NewAttribute(attr)
+	b.attributeMap[attr.String()] = a
 	b._instance.AddAttribute(a)
-	switch a.meta.ValType {
-	case thingmodel.String:
-		a.meta.Val = ""
-	case thingmodel.Int32:
-		a.meta.Val = 0
-	case thingmodel.Int64:
-		a.meta.Val = 0
-	case thingmodel.Bool:
-		a.meta.Val = false
-	case thingmodel.Float32:
-		a.meta.Val = 0
-	case thingmodel.Float64:
-		a.meta.Val = 0
-	case thingmodel.Enum:
-		a.meta.Val = 0
-	case thingmodel.JSON:
-		a.meta.Val = ""
+	if attr.Default != nil {
+		a.meta.Val = attr.Default
+	} else {
+		switch a.meta.ValType {
+		case thingmodel.String:
+			a.meta.Val = ""
+		case thingmodel.Int:
+			a.meta.Val = 0
+		case thingmodel.Int32:
+			a.meta.Val = 0
+		case thingmodel.Int64:
+			a.meta.Val = 0
+		case thingmodel.Bool:
+			a.meta.Val = false
+		case thingmodel.Float32:
+			a.meta.Val = 0
+		case thingmodel.Float64:
+			a.meta.Val = 0
+		case thingmodel.Enum:
+			a.meta.Val = 0
+		case thingmodel.JSON:
+			a.meta.Val = ""
+		}
 	}
 	return a
 }

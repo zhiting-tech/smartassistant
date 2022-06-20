@@ -2,15 +2,18 @@ package sdk
 
 import (
 	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2/definer"
+	"github.com/zhiting-tech/smartassistant/pkg/thingmodel"
 )
 
 type DeviceInfo struct {
 	IID          string
 	Model        string
 	Manufacturer string
+	Type         string
 	AuthRequired bool
 }
 
+// Device 设备
 type Device interface {
 
 	// Address 设备地址，用来判断已添加设备是否变更了ip和端口，是的话回断掉旧的，连接新的
@@ -36,28 +39,13 @@ type Device interface {
 type AuthDevice interface {
 	Device
 	// AuthParams 返回认证/配对参数的定义：类型、默认值、名字等
-	AuthParams() []AuthParam
+	AuthParams() []thingmodel.AuthParam
 	// IsAuth 返回设备是否成功认证/配对
 	IsAuth() bool
 	// Auth 认证/配对
 	Auth(params map[string]interface{}) error
 	// RemoveAuthorization 取消认证/配对
 	RemoveAuthorization(params map[string]interface{}) error
-}
-
-type AuthParam struct {
-	Name     string `json:"name"`
-	Type     string `json:"type"` // string/bool/int/float/select
-	Required bool   `json:"required"`
-
-	Default interface{} `json:"default,omitempty"`
-	Min     interface{} `json:"min,omitempty"`
-	Max     interface{} `json:"max,omitempty"`
-	Options []Option    `json:"options,omitempty"`
-}
-type Option struct {
-	Name string      `json:"name"`
-	Val  interface{} `json:"val"`
 }
 
 type OTAProgressState int // OTA进度

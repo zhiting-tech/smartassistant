@@ -52,6 +52,8 @@ type infoDevice struct {
 	Attributes []entity.Attribute `json:"attributes"` // 有权限的action
 
 	Permissions Permissions `json:"permissions"`
+
+	SyncData string `json:"sync_data"`
 }
 
 // Permissions 设备权限
@@ -174,6 +176,7 @@ func BuildInfoDevice(d entity.Device, user *session.User, req *http.Request, inf
 		Department: iDepartment,
 		LogoURL:    device.LogoURL(req, d),
 		Logo:       iLogo,
+		SyncData:   d.SyncData,
 	}
 
 	userID := user.UserID

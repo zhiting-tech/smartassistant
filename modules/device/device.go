@@ -94,13 +94,13 @@ func GetThingModel(areaID uint64, pluginID, iid string) (das thingmodel.ThingMod
 
 // LogoURL 设备Logo图片地址
 func LogoURL(req *http.Request, d entity.Device) string {
-	return plugin.DeviceLogoURL(req, d.PluginID, d.Model)
+	return plugin.DeviceLogoURL(req, d.PluginID, d.Model, d.Type)
 }
 
 // LogoInfo 获取logo的信息
 func LogoInfo(c *gin.Context, d entity.Device) (logoUrl, logo string) {
 	if d.LogoType == nil || *d.LogoType == int(types.NormalLogo) {
-		return LogoURL(c.Request, d), plugin.GetGlobalClient().DeviceConfig(d.PluginID, d.Model).Logo
+		return LogoURL(c.Request, d), plugin.GetGlobalClient().Config(d.PluginID).DeviceConfig(d.Model, d.Type).Logo
 	}
 	return types.LogoFromLogoType(types.LogoType(*d.LogoType), c.Request)
 

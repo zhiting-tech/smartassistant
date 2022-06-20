@@ -80,7 +80,7 @@ func (sd *DemoProtocolDevice) Listen(def *definer.Definer) {
 	}
 }
 
-func (sd *DemoProtocolDevice) AuthParams() []sdk.AuthParam {
+func (sd *DemoProtocolDevice) AuthParams() []thingmodel.AuthParam {
 	return nil
 }
 

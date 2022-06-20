@@ -16,8 +16,8 @@ import (
 type ConditionType int
 
 const (
-	ConditionTypeTiming ConditionType = iota + 1
-	ConditionTypeDeviceStatus
+	ConditionTypeTiming       ConditionType = iota + 1 // 条件类型：定时
+	ConditionTypeDeviceStatus                          // 条件类型：设备状态变化
 )
 
 type OperatorType string
@@ -136,10 +136,10 @@ func (d SceneCondition) CheckConditionItem(userId, deviceId int, isRequireNotify
 	}
 
 	// 设备控制权限的判断
-	if !IsDeviceControlPermit(userId, deviceId, item) {
-		err = errors.New(status.DeviceOrSceneControlDeny)
-		return
-	}
+	//if !isRequireNotify && !IsDeviceControlPermit(userId, deviceId, item) {
+	//	err = errors.New(status.DeviceOrSceneControlDeny)
+	//	return
+	//}
 
 	return
 }

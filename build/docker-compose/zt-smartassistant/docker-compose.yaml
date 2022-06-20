@@ -1,0 +1,39 @@
+version: "3.3"
+
+services:
+  zt-nginx:
+    image: ${DOCKER_REGISTRY}/zhitingtech/zt-nginx:${ZT_NGINX}
+    environment:
+      - TZ=${TZ}
+    ports:
+      - ${HTTP_PORT}:9020
+      - ${HTTPS_PORT}:9030
+    volumes:
+      - ./config/certs:/etc/nginx/certs
+      - ./gen/nginx/locations:/etc/nginx/conf.d/locations
+      - ./gen/nginx/nginx_smartassistant.conf:/etc/nginx/conf.d/smartassistant.conf
+    depends_on:
+      - smartassistant
+
+  etcd:
+    image: ${DOCKER_REGISTRY}/zhitingtech/etcd:${ETCD}
+    ports:
+      - 2379:2379
+      - 2380:2380
+
+  smartassistant:
+    image: ${DOCKER_REGISTRY}/zhitingtech/smartassistant:${SMARTASSISTANT}
+    environment:
+      - TZ=${TZ}
+    ports:
+      - "54321:54321/udp"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - type: bind
+        source: ${RUNTIME_PATH}
+        target: /mnt/data/zt-smartassistant
+    depends_on:
+      - etcd
+
+volumes:
+  db:

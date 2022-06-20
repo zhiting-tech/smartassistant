@@ -95,6 +95,10 @@ func IsDepartmentManager(areaID uint64, departmentID, userID int) (isManager boo
 
 // GetDepartmentByID 通过id获取部门
 func GetDepartmentByID(id int) (department Department, err error) {
+	if id == 0 {
+		err = errors.Wrap(err, status.DepartmentNotExit)
+		return
+	}
 	err = GetDB().First(&department, "id = ?", id).Error
 	if err != nil {
 		if errors2.Is(err, gorm.ErrRecordNotFound) {

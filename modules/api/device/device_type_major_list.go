@@ -54,19 +54,21 @@ func MajorTypeList(c *gin.Context) {
 		response.HandleResponse(c, err, resp)
 	}()
 
-	deviceConfigs := plugin.GetGlobalClient().DeviceConfigs()
+	configs := plugin.GetGlobalClient().Configs()
 	m := make(map[plugin.DeviceType]string, 0)
-	for _, d := range deviceConfigs {
-		if d.Provisioning == "" { // 没有配置置网页则忽略
-			continue
-		}
+	for _, plgConf := range configs {
+		for _, d := range plgConf.SupportDevices {
+			if d.Provisioning == "" { // 没有配置置网页则忽略
+				continue
+			}
 
-		pType := minorTypes[d.Type].ParentType
-		if pType == "" {
-			continue
-		}
+			pType := minorTypes[d.Type].ParentType
+			if pType == "" {
+				continue
+			}
 
-		m[pType] = majorTypes[pType]
+			m[pType] = majorTypes[pType]
+		}
 	}
 
 	for k, v := range m {

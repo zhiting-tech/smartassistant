@@ -29,7 +29,7 @@ func RegisterEventFunc(ws *websocket.Server) {
 
 func UpdateThingModel(em event.EventMessage) (err error) {
 	tm := em.Param["thing_model"].(thingmodel.ThingModel)
-	areaID := em.Param["area_id"].(uint64)
+	areaID := em.AreaID
 	pluginID := em.Param["plugin_id"].(string)
 	iid := em.Param["iid"].(string)
 
@@ -47,11 +47,11 @@ func UpdateThingModel(em event.EventMessage) (err error) {
 		return
 	}
 	// 更新物模型
-	isGateway := tm.IsGateway()
+	isGateway := tm.IsBridge()
 	for _, ins := range tm.Instances {
 		var e entity.Device
 
-		isChildIns := !ins.IsGateway() && isGateway
+		isChildIns := !ins.IsBridge() && isGateway
 		if !isChildIns {
 			e, err = plugin.ThingModelToEntity(iid, tm, pluginID, areaID)
 			if err != nil {
@@ -67,6 +67,7 @@ func UpdateThingModel(em event.EventMessage) (err error) {
 				err = nil
 				continue
 			}
+			configDeviceName := e.Name
 
 			// 更新前判断子设备是否已存在
 			isChildExist, _ := entity.IsDeviceExist(areaID, pluginID, e.IID)
@@ -85,12 +86,18 @@ func UpdateThingModel(em event.EventMessage) (err error) {
 				}
 
 				// 更新设备房间为默认房间
-				if err = entity.UpdateDevice(e.ID, entity.Device{LocationID: gDevice.LocationID}); err != nil {
+				updates := map[string]interface{}{
+					"name":           configDeviceName,
+					"location_id":    gDevice.LocationID,
+					"location_order": 0,
+				}
+				if err = entity.UpdateDeviceWithMap(e.ID, updates); err != nil {
 					logrus.Error(err)
 					err = nil
 					continue
 				}
 			}
+
 			// 发送通知有设备增加 FIXME 更新也发通知（子设备重复添加时需要通知来完成添加流程）
 			m := event.NewEventMessage(event.DeviceIncrease, areaID)
 			m.Param = map[string]interface{}{

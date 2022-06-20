@@ -93,6 +93,13 @@ func (s *Server) MulticastMsg(em event.EventMessage) error {
 	case event.DeviceDecrease:
 	case event.DeviceIncrease:
 		ev.Data = em.Param
+		v, ok := em.Param["device"]
+		if ok {
+			d, ok := v.(entity.Device)
+			if ok && d.PluginID != "" {
+				topic = fmt.Sprintf("%d/%s/%s", areaID, em.EventType, d.PluginID)
+			}
+		}
 	case event.AttributeChange:
 		deviceID := em.GetDeviceID()
 		d, err := entity.GetDeviceByID(deviceID)

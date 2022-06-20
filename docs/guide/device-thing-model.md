@@ -348,91 +348,333 @@
 | permission | read/notify          |
 | value_type | int                  |
 
+### Mute
+
+| property   | value             |
+|------------|-------------------|
+| type       | mute              |
+| permission | read/write/notify |
+| value_type | bool              |
+
+### Current Ambient Light Level
+
+| property   | value                       |
+|------------|-----------------------------|
+| type       | current_ambient_light_level |
+| permission | read/notify                 |
+| value_type | float                       |
+
+### Night Vision
+
+| property   | value             |
+|------------|-------------------|
+| type       | night_vision      |
+| permission | read/write/notify |
+| value_type | bool              |
+
+### Mode Indicator
+
+| property   | value             |
+|------------|-------------------|
+| type       | mode_indicator    |
+| permission | read/write/notify |
+| value_type | int               |
+
+### Webrtc Control
+
+| property   | value                  |
+|------------|------------------------|
+| type       | webrtc_control         |
+| permission | read/write/sceneHidden |
+| value_type | string                 |
+
+### Answer
+
+| property   | value             |
+|------------|-------------------|
+| type       | answer            |
+| permission | read/write/hidden |
+| value_type | string            |
+
+### Streaming Status
+
+| property   | value              |
+|------------|--------------------|
+| type       | streaming_status   |
+| permission | read/notify/hidden |
+| value_type | int                |
+
+### Move
+
+| property   | value  |
+|------------|--------|
+| type       | move   |
+| permission | write  |
+| value_type | string |
+
+### Media Resolution Options
+
+| property   | value              |
+|------------|--------------------|
+| type       | resolution_options |
+| permission | read               |
+| value_type | string             |
+
+### Media Resolution
+
+| property   | value                         |
+|------------|-------------------------------|
+| type       | resolution                    |
+| permission | read/write/notify/sceneHidden |
+| value_type | string                        |
+
+### Media Frame Rate Limit
+
+| property   | value                    |
+|------------|--------------------------|
+| type       | frame_rate_limit         |
+| permission | read/write/notify/hidden |
+| value_type | int                      |
+
+### Media Bit Rate Limit
+
+| property   | value                    |
+|------------|--------------------------|
+| type       | bitrate_limit            |
+| permission | read/write/notify/hidden |
+| value_type | int                      |
+
+### Media Encoding Interval
+
+| property   | value                    |
+|------------|--------------------------|
+| type       | encoding_interval        |
+| permission | read/write/notify/hidden |
+| value_type | int                      |
+
+### Media Quality
+
+| property   | value                    |
+|------------|--------------------------|
+| type       | media_quality            |
+| permission | read/write/notify/hidden |
+| value_type | int                      |
+
+### Media GovLength
+
+| property   | value                    |
+|------------|--------------------------|
+| type       | media_govLength          |
+| permission | read/write/notify/hidden |
+| value_type | int                      |
+
+### PTZ TDCruise
+
+| property   | value             |
+|------------|-------------------|
+| type       | top_down_cruise   |
+| permission | read/write/notify |
+| value_type | string            |
+
+### PTZ LRCruise
+
+| property   | value              |
+|------------|--------------------|
+| type       | left_right_cruise  |
+| permission | read/write/notify  |
+| value_type | string             |
+
 ## Services
 
-### Switch
+### Info Service
+
+| property   | value                                                                 |
+|------------|-----------------------------------------------------------------------|
+| type       | info                                                                  |
+| attributes | [Identify](#identify) <br/> [Model](#model) <br/> [Version](#version) |
+
+### Gateway Service
+
+| property   | value             |
+|------------|-------------------|
+| type       | gateway           |
+
+### Light Bulb Service
+
+| property   | value              |
+|------------|--------------------|
+| type       | light_bulb         |
+| attributes | [On Off](#on-off)  |
+
+### Switch Service
 
 | property   | value             |
 |------------|-------------------|
 | type       | switch            |
 | attributes | [On Off](#on-off) |
 
-### Outlet
+### Outlet Service
 
 | property   | value             |
 |------------|-------------------|
 | type       | outlet            |
 | attributes | [On Off](#on-off) |
 
-### Light Bulb
+### Curtain Service
 
-| property   | value                                                                                                          |
-|------------|----------------------------------------------------------------------------------------------------------------|
-| type       | light_bulb                                                                                                     |
-| attributes | [On Off](#on-off) <br> [Brightness](#brightness) <br> [Color Temperature](#color-temperature) <br> [RGB](#rgb) |
-
-### Gateway
-
-| property   | value             |
-|------------|-------------------|
-| type       | gateway           |
-| attributes | [On Off](#on-off) |
-
-### Curtain
-
-| property   | value                                                                                                                                                                                                                  |
-|------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| type       | gateway                                                                                                                                                                                                                |
-| attributes | [Current Position](#current-position) <br> [Target Position](#target-position) <br> [State](#state) <br> [Style](#style) <br>[Direction](#direction) <br> [Upper Limit](#upper-limit) <br> [Lower Limit](#lower-limit) |
+| property   | value                                                                                                                             |
+|------------|-----------------------------------------------------------------------------------------------------------------------------------|
+| type       | gateway                                                                                                                           |
+| attributes | [Current Position](#current-position) <br/> [Target Position](#target-position) <br/> [State](#state) <br>[Direction](#direction) |
 
 ### Contact Sensor
 
-| property   | value                                                                  |
-|------------|------------------------------------------------------------------------|
-| type       | contact_sensor                                                         |
-| attributes | [Contact Sensor State](#contact-sensor-state) <br> [Battery](#battery) |
+| property   | value                                                                   |
+|------------|-------------------------------------------------------------------------|
+| type       | contact_sensor                                                          |
+| attributes | [Contact Sensor State](#contact-sensor-state) <br/> [Battery](#battery) |
 
-### Temp Humidity Sensor
+### Temperature Sensor
 
-| property   | value                                                                           |
-|------------|---------------------------------------------------------------------------------|
-| type       | temperature_humidity_sensor                                                     |
-| attributes | [Temperature](#temperature) <br> [Humidity](#humidity) <br> [Battery](#battery) |
+| property   | value                       |
+|------------|-----------------------------|
+| type       | temperature_sensor          |
+| attributes | [Temperature](#temperature) |
 
-### Stateless Switch
+### Humidity Sensor
 
-| property   | value                                                 |
-|------------|-------------------------------------------------------|
-| type       | stateless_switch                                      |
-| attributes | [SwitchEvent](#switch-event) <br> [Battery](#battery) |
-
-### Security System
-
-| property   | value                                                            |
-|------------|------------------------------------------------------------------|
-| type       | security_system                                                  |
-| attributes | [TargetState](#target-state) <br> [CurrentState](#current-state) |
-
-### MotionSensor
-
-| property   | value                                                        |
-|------------|--------------------------------------------------------------|
-| type       | motion_sensor                                                |
-| attributes | [Motion Detected](#motion-detected) <br> [Battery](#battery) |
-
-### Lock
-
-| property   | value                                                                             |
-|------------|-----------------------------------------------------------------------------------|
-| type       | lock                                                                              |
-| attributes | [LockTargetState](#lock-target-state) <br> [Logs](#logs) <br> [Battery](#battery) |
+| property   | value                   |
+|------------|-------------------------|
+| type       | humidity_sensor         |
+| attributes | [Humidity](#humidity)   |
 
 ### HeaterCooler
 
-| property   | value                                                                                                                                                                                                                                                                                                                                                                                                              |
-|------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| type       | heater_cooler                                                                                                                                                                                                                                                                                                                                                                                                      |
-| attributes | [Active](#active) <br> [Current Temperature](#current-temperature) <br> [Cooling Threshold Temperature](#cooling-threshold-temperature) <br> [Heating Threshold Temperature](#heating-threshold-temperature) <br> [Current Heater Cooler State](#current-heater-cooler-state) <br> [Target Heater Cooler State](#target-heater-cooler-state) <br> [Rotation Speed](#rotation-speed) <br> [Swing Mode](#swing-mode) |
+| property   | value                                                                                                                                                                                                                                                                                                                                          |
+|------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| type       | heater_cooler                                                                                                                                                                                                                                                                                                                                  |
+| attributes | [Active](#active) <br/> [Current Temperature](#current-temperature) <br/> [Cooling Threshold Temperature](#cooling-threshold-temperature) <br> [Heating Threshold Temperature](#heating-threshold-temperature) <br> [Current Heater Cooler State](#current-heater-cooler-state) <br> [Target Heater Cooler State](#target-heater-cooler-state) |
+
+### Lock
+
+| property   | value                 |
+|------------|-----------------------|
+| type       | lock                  |
+| attributes | [Battery](#battery)   |
+
+### Door
+
+| property   | value                                 |
+|------------|---------------------------------------|
+| type       | door                                  |
+| attributes | [Current Position](#current-position) |
+
+### Doorbell
+
+| property   | value                         |
+|------------|-------------------------------|
+| type       | doorbell                      |
+| attributes | [Switch Event](#switch-event) |
+
+### MotionSensor
+
+| property   | value                                |
+|------------|--------------------------------------|
+| type       | motion_sensor                        |
+| attributes | [Motion Detected](#motion-detected)  |
+
+### LeakSensor
+
+| property   | value                           |
+|------------|---------------------------------|
+| type       | leak_sensor                     |
+| attributes | [Leak_Detected](#leak-detected) |
+
+### BatteryService
+
+| property   | value               |
+|------------|---------------------|
+| type       | battery             |
+| attributes | [Battery](#battery) |
+
+### Security System
+
+| property   | value                                                             |
+|------------|-------------------------------------------------------------------|
+| type       | security_system                                                   |
+| attributes | [TargetState](#target-state) <br/> [CurrentState](#current-state) |
+
+### Stateless Switch
+
+| property   | value                                                  |
+|------------|--------------------------------------------------------|
+| type       | stateless_switch                                       |
+| attributes | [SwitchEvent](#switch-event) <br/> [Battery](#battery) |
+
+### ContactSensor
+
+| property   | value                                       |
+|------------|---------------------------------------------|
+| type       | contact_sensor                              |
+| attributes | [ContactSensorState](#contact-sensor-state) |
+
+### Speaker
+
+| property   | value             |
+|------------|-------------------|
+| type       | speaker           |
+| attributes | [Volume](#volume) |
+
+### Microphone
+
+| property   | value             |
+|------------|-------------------|
+| type       | microphone        |
+| attributes | [Volume](#volume) |
+
+### LightSensor
+
+| property   | value                                                       |
+|------------|-------------------------------------------------------------|
+| type       | light_sensor                                                |
+| attributes | [Current Ambient Light Level](#current-ambient-light-level) |
+
+### CameraRTPStreamManagement
+
+| property   | value                                 |
+|------------|---------------------------------------|
+| type       | camera_rtp_stream_management          |
+| attributes | [Streaming Status](#streaming-status) |
+
+### OperatingMode
+
+| property   | value                            |
+|------------|----------------------------------|
+| type       | operating_mode                   |
+| attributes | [Operating Mode](#operatingMode) |
+
+### MediaNegotiation
+
+| property   | value                             |
+|------------|-----------------------------------|
+| type       | media_negotiation                 |
+| attributes | [WebRtc Control](#webRtc-control) |
+
+### PTZ
+
+| property   | value             |
+|------------|-------------------|
+| type       | ptz               |
+| attributes | [Move](#PTZ-move) |
+
+### Media
+
+| property   | value                                                                                                                                                                                                                                                                                                                                                      |
+|------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| type       | media                                                                                                                                                                                                                                                                                                                                                      |
+| attributes | [media resolution options](#media-resolution-options) <br/> [Media Resolution](#media-resolution) <br/> [Media Frame Rate Limit](#media-frame-rate-limit) <br/> [Media Bit Rate Limit](#media-bit-rate-limit) <br/> [Media Encoding Interval](#media-encoding-interval) <br/> [Media Quality](#media-quality)<br/>[Media GovLength](#media-govLength)<br/> |
+
+
 
 
 

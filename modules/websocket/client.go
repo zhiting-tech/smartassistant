@@ -72,7 +72,7 @@ func (cli *client) handleWsMessage(data []byte, user *session.User) (err error) 
 		return
 	}
 	req.ginCtx = cli.ginCtx
-	req.user = user
+	req.User = user
 
 	// 请参考 docs/guide/web-socket-api.md 中的定义
 	// 订阅消息
@@ -83,7 +83,14 @@ func (cli *client) handleWsMessage(data []byte, user *session.User) (err error) 
 	if req.Service == serviceDiscover { // 写死的发现命令，优先级最高，忽略 domain，发送给所有插件
 		return cli.discover(req, user)
 	}
-	return cli.handleCallService(req) // 通过插件服务和设备通信
+	beginTime := time.Now().Format("2006-01-02 15:04:05 -0700 MST")
+	resp := cli.handleCallService(req) // 通过插件服务和设备通信
+	cli.SendMsg(resp)
+	endTime := time.Now().Format("2006-01-02 15:04:05 -0700 MST")
+	msg, _ := json.Marshal(resp)
+	logger.Debugf("request: %s, response msg: %s, begin time: %s, end time: %s",
+		string(data), string(msg), beginTime, endTime)
+	return
 }
 
 type DiscoverResponse struct {
@@ -108,7 +115,7 @@ func (cli *client) discover(req Request, user *session.User) error {
 		}
 		_, err := entity.GetPluginDevice(user.AreaID, r.PluginID, r.IID)
 		if errors2.Is(err, gorm.ErrRecordNotFound) {
-			r.LogoURL = plugin.DeviceLogoURL(cli.ginCtx.Request, r.PluginID, r.Model)
+			r.LogoURL = plugin.DeviceLogoURL(cli.ginCtx.Request, r.PluginID, r.Model, r.Type)
 			resp := NewResponse(req.ID)
 			resp.Success = true
 			resp.Data = DiscoverResponse{Device: r}
@@ -135,7 +142,7 @@ func (cli *client) handleSubscribeEvent(req Request) (err error) {
 		json.Unmarshal(req.Data, &data)
 	}
 
-	topic := fmt.Sprintf("%d/%s", req.user.AreaID, req.Event)
+	topic := fmt.Sprintf("%d/%s", req.User.AreaID, req.Event)
 	if data.PluginID != "" {
 		topic = fmt.Sprintf("%s/%s", topic, data.PluginID)
 		if data.IID != "" {
@@ -154,9 +161,10 @@ func (cli *client) handleSubscribeEvent(req Request) (err error) {
 	return
 }
 
-func (cli *client) handleCallService(req Request) (err error) {
+func (cli *client) handleCallService(req Request) (resp *Message) {
 
-	resp := NewResponse(req.ID)
+	var err error
+	resp = NewResponse(req.ID)
 	defer func() {
 		if r := recover(); r != nil {
 			err = errors2.New(fmt.Sprintf("handleCallService err: %v", r))
@@ -168,9 +176,6 @@ func (cli *client) handleCallService(req Request) (err error) {
 		} else {
 			resp.Success = true
 		}
-		cli.SendMsg(resp)
-		msg, _ := json.Marshal(resp)
-		logger.Debugf("req: %v, response msg: %s", req, string(msg))
 	}()
 	if req.Service == "" {
 		err = errors.New(status2.WebsocketDomainRequired)
@@ -188,7 +193,6 @@ func (cli *client) handleCallService(req Request) (err error) {
 
 func (cli *client) Close() error {
 	close(cli.send)
-	_ = cli.conn.WriteMessage(ws.CloseMessage, []byte{})
 	for _, s := range cli.subscribers {
 		s.Unsubscribe()
 	}
@@ -231,6 +235,7 @@ func (cli *client) writeWS() {
 		select {
 		case msg, ok := <-cli.send:
 			if !ok {
+				_ = cli.conn.WriteMessage(ws.CloseMessage, []byte{})
 				return
 			}
 			_ = cli.conn.WriteMessage(ws.TextMessage, msg)

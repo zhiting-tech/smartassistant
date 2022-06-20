@@ -53,7 +53,7 @@ func InfoDeviceLogo(c *gin.Context) {
 
 	resp.DeviceLogos = append(resp.DeviceLogos, deviceLogoInfo{
 		Name: "设备图片",
-		Url:  plugin.DeviceLogoURL(c.Request, deviceInfo.PluginID, deviceInfo.Model),
+		Url:  plugin.DeviceLogoURL(c.Request, deviceInfo.PluginID, deviceInfo.Model, deviceInfo.Type),
 	})
 
 	for _, l := range types.DeviceLogos {

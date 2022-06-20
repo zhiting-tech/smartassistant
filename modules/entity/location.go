@@ -56,6 +56,10 @@ func CreateLocation(location *Location) error {
 }
 
 func GetLocationByID(id int) (location Location, err error) {
+	if id == 0 {
+		err = errors.Wrap(err, status.LocationNotExit)
+		return
+	}
 	err = GetDB().First(&location, "id = ?", id).Error
 	if err != nil {
 		if errors2.Is(err, gorm.ErrRecordNotFound) {

@@ -183,6 +183,23 @@ func UpdateDevice(id int, updateDevice Device) (err error) {
 	return
 }
 
+func UpdateDeviceWithMap(id int, updates map[string]interface{}) (err error) {
+	d, err := GetDeviceByID(id)
+	if err != nil {
+		if errors2.Is(err, gorm.ErrRecordNotFound) {
+			err = errors.Wrap(err, status.DeviceNotExist)
+		} else {
+			err = errors.Wrap(err, errors.InternalServerErr)
+		}
+		return
+	}
+	err = GetDB().Model(&d).Updates(updates).Error
+	if err != nil {
+		err = errors.Wrap(err, errors.InternalServerErr)
+	}
+	return
+}
+
 // IsDeviceExist 设备是否存在
 func IsDeviceExist(areaID uint64, pluginID, iid string) (isExist bool, err error) {
 
@@ -202,7 +219,7 @@ func GetSaDevice() (device Device, err error) {
 }
 
 func UnBindLocationDevices(locationID int) (err error) {
-	err = GetDB().Find(&Device{}, "location_id = ?", locationID).
+	err = GetDB().Model(&Device{}).Where("location_id = ?", locationID).
 		Update("location_id", 0).Error
 	return
 }
@@ -459,25 +476,26 @@ func (d Device) UserAttributes() (attributes []Attribute, err error) {
 		return
 	}
 
-	isGatewayTm := tm.IsGateway()
-	for _, instance := range tm.Instances {
-		isGateway := instance.IsGateway()
-		if isGatewayTm && !isGateway {
+	if len(tm.Instances) == 0 {
+		return
+	}
+	ins, err := tm.PrimaryInstance()
+	if err != nil {
+		return
+	}
+	for _, srv := range ins.Services {
+		// 忽略info属性
+		if srv.Type == "info" {
 			continue
 		}
-		for _, srv := range instance.Services {
-			// 忽略info属性
-			if srv.Type == "info" {
+		for _, attr := range srv.Attributes {
+			if attr.NoPermission() || attr.PermissionHidden() {
 				continue
 			}
-			for _, attr := range srv.Attributes {
-				if attr.NoPermission() || attr.PermissionHidden() {
-					continue
-				}
-				attributes = append(attributes, Attribute{srv.Type, attr})
-			}
+			attributes = append(attributes, Attribute{srv.Type, attr})
 		}
 	}
+
 	return
 }
 
@@ -532,33 +550,32 @@ func (d Device) IsControllable(up UserPermissions) bool {
 
 // ControlAttributes 获取设备的属性（有写的权限）
 func (d Device) ControlAttributes(withHidden bool) (attributes []Attribute, err error) {
-	das, err := d.GetThingModel()
+	tm, err := d.GetThingModel()
 	if err != nil {
 		return
 	}
 
-	isGatewayTm := das.IsGateway()
+	if len(tm.Instances) == 0 {
+		return
+	}
+	ins, err := tm.PrimaryInstance()
+	if err != nil {
+		return
+	}
 
-	for _, instance := range das.Instances {
-		isGateway := instance.IsGateway()
-		if isGatewayTm && !isGateway {
+	for _, srv := range ins.Services {
+		// 忽略info属性
+		if srv.Type == "info" {
 			continue
 		}
-
-		for _, srv := range instance.Services {
-			// 忽略info属性
-			if srv.Type == "info" {
+		for _, attr := range srv.Attributes {
+			if !attr.PermissionWrite() {
 				continue
 			}
-			for _, attr := range srv.Attributes {
-				if !attr.PermissionWrite() {
-					continue
-				}
-				if !withHidden && attr.PermissionHidden() {
-					continue
-				}
-				attributes = append(attributes, Attribute{srv.Type, attr})
+			if !withHidden && attr.PermissionHidden() {
+				continue
 			}
+			attributes = append(attributes, Attribute{srv.Type, attr})
 		}
 	}
 	return
@@ -567,6 +584,9 @@ func (d Device) ControlAttributes(withHidden bool) (attributes []Attribute, err 
 // GetShadow 从设备影子中获取属性
 func (d Device) GetShadow() (shadow Shadow, err error) {
 	shadow = NewShadow()
+	if len(d.Shadow.String()) == 0 {
+		return
+	}
 	if err = json.Unmarshal(d.Shadow, &shadow); err != nil {
 		return
 	}
@@ -575,7 +595,7 @@ func (d Device) GetShadow() (shadow Shadow, err error) {
 
 // GetThingModel 获取物模型，仅物模型
 func (d Device) GetThingModel() (tm thingmodel.ThingModel, err error) {
-	if d.PluginID == "" { // 仅为客户端同步的设备没有物模型
+	if len(d.ThingModel.String()) == 0 {
 		return
 	}
 	if err = json.Unmarshal(d.ThingModel, &tm); err != nil {
@@ -594,6 +614,11 @@ func (d Device) GetThingModelWithState(up UserPermissions) (tm thingmodel.ThingM
 	shadow, err := d.GetShadow()
 	if err != nil {
 		return
+	}
+
+	permission := types.NewDeviceFwUpgrade(d.ID)
+	if tm.OTASupport && !up.IsPermit(permission) {
+		tm.OTASupport = false
 	}
 
 	// wrap attribute's value and permission

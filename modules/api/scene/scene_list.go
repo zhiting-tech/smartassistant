@@ -1,22 +1,20 @@
 package scene
 
 import (
-	"encoding/json"
 	errors2 "errors"
 	"net/http"
 
 	device2 "github.com/zhiting-tech/smartassistant/modules/device"
 	"github.com/zhiting-tech/smartassistant/modules/plugin"
 
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/response"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/types"
 	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/modules/utils/session"
-	"github.com/zhiting-tech/smartassistant/pkg/logger"
-
-	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 
 	"github.com/zhiting-tech/smartassistant/pkg/errors"
 )
@@ -148,12 +146,6 @@ func WrapScenes(c *gin.Context, scenes []entity.Scene, userID int, listType list
 		if listType == permitScene && !controlPermission {
 			continue
 		}
-
-		// 场景执行任务信息
-		if items, err = WrapItems(c, scene.ID); err != nil {
-			return
-		}
-
 		// 场景信息
 		sceneInfo := Scene{
 			ID:                scene.ID,
@@ -161,16 +153,16 @@ func WrapScenes(c *gin.Context, scenes []entity.Scene, userID int, listType list
 			ControlPermission: controlPermission,
 		}
 
+		// 场景执行任务信息
+		if items, err = WrapTasks(c, scene.ID); err != nil {
+			return
+		}
+
 		// 场景触发条件信息()
 		if scene.AutoRun {
 			// 自动触发条件
-			var canControl bool
-			if condition, canControl, err = WrapCondition(c, scene.ID, userID); err != nil {
+			if condition, err = WrapCondition(c, scene.ID); err != nil {
 				return
-			}
-			// 没有触发条件中设备的控制权限，ControlPermission为false
-			if !canControl {
-				sceneInfo.ControlPermission = false
 			}
 
 			autoRunScene := autoRunSceneInfo{
@@ -195,39 +187,20 @@ func WrapScenes(c *gin.Context, scenes []entity.Scene, userID int, listType list
 	return
 }
 
-func WrapCondition(ctx *gin.Context, sceneID, userID int) (sceneCondition sceneCondition, canControlDevice bool, err error) {
+func WrapCondition(ctx *gin.Context, sceneID int) (sceneCondition sceneCondition, err error) {
 	var (
-		conditions    []entity.SceneCondition
-		conditionItem entity.Attribute
+		conditions []entity.SceneCondition
 	)
 
-	canControlDevice = true
 	// 获取场景的所有触发条件
 	if conditions, err = entity.GetConditionsBySceneID(sceneID); err != nil {
 		return
 	}
 
-	up, err := entity.GetUserPermissions(userID)
-	if err != nil {
-		return
-	}
 	for i, c := range conditions {
 		// 只返回第一个触发条件的信息
 		sceneCondition.Type = conditions[0].ConditionType
 		if c.ConditionType == entity.ConditionTypeDeviceStatus {
-			// 智能设备触发条件
-			// 判断对应权限
-			if err = json.Unmarshal(c.ConditionAttr, &conditionItem); err != nil {
-				logger.Error(err)
-				err = errors.Wrap(err, errors.InternalServerErr)
-				canControlDevice = false
-				return
-			}
-			if !up.IsDeviceAttrControlPermit(c.DeviceID, conditionItem.AID) {
-				canControlDevice = false
-				return
-			}
-
 			// 第一个触发条件为设备时，包装对应信息
 			if i == 0 {
 				item := Item{ID: c.DeviceID}
@@ -242,7 +215,7 @@ func WrapCondition(ctx *gin.Context, sceneID, userID int) (sceneCondition sceneC
 	return
 }
 
-func WrapItems(c *gin.Context, sceneID int) (items []Item, err error) {
+func WrapTasks(c *gin.Context, sceneID int) (items []Item, err error) {
 	var (
 		tasks []entity.SceneTask
 		item  Item
@@ -255,17 +228,15 @@ func WrapItems(c *gin.Context, sceneID int) (items []Item, err error) {
 		return
 	}
 	for _, task := range tasks {
-		if item, err = WrapItem(c, task); err != nil {
+		if item, err = WrapTask(c, task); err != nil {
 			return
 		}
 		items = append(items, item)
-
 	}
-
 	return
 }
 
-func WrapItem(c *gin.Context, task entity.SceneTask) (item Item, err error) {
+func WrapTask(c *gin.Context, task entity.SceneTask) (item Item, err error) {
 	var (
 		taskDevices []entity.Attribute
 		scene       entity.Scene
@@ -322,7 +293,7 @@ func checkControlPermission(c *gin.Context, sceneID int, userID int, checked map
 	controlPermission = true
 	checked[sceneID] = true
 
-	if items, err = WrapItems(c, sceneID); err != nil {
+	if items, err = WrapTasks(c, sceneID); err != nil {
 		return
 	}
 	var up entity.UserPermissions

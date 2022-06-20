@@ -102,29 +102,33 @@ func MinorTypeList(c *gin.Context) {
 	if u != nil {
 		token = u.Token
 	}
-	deviceConfigs := plugin.GetGlobalClient().DeviceConfigs()
+	pluginConfigs := plugin.GetGlobalClient().Configs()
 	m := make(map[plugin.DeviceType][]ModelDevice)
-	for _, d := range deviceConfigs {
-		if d.Provisioning == "" { // 没有配置置网页则忽略
-			continue
-		}
-		// 拼接token和插件id辅助插件实现websocket请求
-		provisioning, err := d.WrapProvisioning(token, d.PluginID)
-		if err != nil {
-			logger.Error(err)
-			continue
-		}
-		md := ModelDevice{
-			Name:  d.Name,
-			Model: d.Model,
-			Logo: plugin.PluginTargetURL(c.Request, d.PluginID,
-				d.Model, d.Logo), // 根据配置拼接插件中的图片地址
-			Provisioning: provisioning,
-			PluginID:     d.PluginID,
-			Protocol:     d.Protocol,
-		}
-		if req.Type == minorTypes[d.Type].ParentType || req.Type == d.Type {
-			m[d.Type] = append(m[d.Type], md)
+	for _, pluginConf := range pluginConfigs {
+
+		for _, d := range pluginConf.SupportDevices {
+			if d.Provisioning == "" { // 没有配置置网页则忽略
+				continue
+			}
+			// 拼接token和插件id辅助插件实现websocket请求
+			provisioning, err := d.WrapProvisioning(token, pluginConf.ID)
+			if err != nil {
+				logger.Error(err)
+				continue
+			}
+			md := ModelDevice{
+				Name:         d.Name,
+				Manufacturer: pluginConf.Brand,
+				Model:        d.Model,
+				Logo: plugin.PluginTargetURL(c.Request, pluginConf.ID,
+					d.Model, d.Logo), // 根据配置拼接插件中的图片地址
+				Provisioning: provisioning,
+				PluginID:     pluginConf.ID,
+				Protocol:     d.Protocol,
+			}
+			if req.Type == minorTypes[d.Type].ParentType || req.Type == d.Type {
+				m[d.Type] = append(m[d.Type], md)
+			}
 		}
 	}
 

@@ -1,0 +1,43 @@
+
+location / {
+    alias /home/smartassistant-vue/;
+    index  index.html index.htm;
+}
+
+location /ws {
+    proxy_pass http://smartassistant:37965/ws;
+    proxy_http_version 1.1;
+    proxy_read_timeout 360s;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
+
+location /api {
+    proxy_set_header Host  $http_host;
+    proxy_set_header X-Scheme $scheme;
+
+    proxy_pass   http://smartassistant:37965;
+}
+
+location /plugin {
+    proxy_set_header Host  $http_host;
+    proxy_set_header X-Scheme $scheme;
+
+    add_header Access-Control-Allow-Origin *;
+    add_header Access-Control-Allow-Methods 'GET, POST, OPTIONS';
+    add_header Access-Control-Allow-Headers 'DNT,X-Mx-ReqToken,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization';
+
+    if ($request_method = 'OPTIONS') {
+        return 204;
+    }
+    proxy_pass   http://smartassistant:37965/plugin;
+}
+
+location /backend/static {
+    proxy_pass   http://smartassistant:37965/backend/static;
+}
+
+
+location /file {
+    proxy_pass   http://smartassistant:37965/file;
+}

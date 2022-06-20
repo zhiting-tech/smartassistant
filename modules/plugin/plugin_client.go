@@ -20,6 +20,7 @@ import (
 	"github.com/zhiting-tech/smartassistant/pkg/logger"
 	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/proto/v2"
 	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2"
+	"github.com/zhiting-tech/smartassistant/pkg/thingmodel"
 )
 
 const (
@@ -145,6 +146,7 @@ func (pc *pluginClient) DeviceDiscover(ctx context.Context, out chan<- DiscoverR
 				IID:          resp.Iid,
 				Model:        resp.Model,
 				Manufacturer: resp.Manufacturer,
+				Type:         resp.Type,
 				Name:         pc.GetDeviceName(resp.Model),
 				PluginID:     pc.pluginID,
 				PluginName:   pc.PluginInfo.Name,
@@ -157,7 +159,7 @@ func (pc *pluginClient) DeviceDiscover(ctx context.Context, out chan<- DiscoverR
 			}
 
 			if resp.AuthRequired {
-				var authParams []sdk.AuthParam
+				var authParams []thingmodel.AuthParam
 				if err = json.Unmarshal(resp.AuthParams, &authParams); err != nil {
 					logrus.Errorf("unmarshal authParams err: %s", err)
 					continue
@@ -193,11 +195,10 @@ func (pc *pluginClient) GetDeviceName(model string) string {
 	return model
 }
 
-func (pc *pluginClient) ListenStateChange() {
+func (pc *pluginClient) ListenChange() error {
 	pdc, err := pc.protoClient.Subscribe(context.Background(), &emptypb.Empty{})
 	if err != nil {
-		logger.Error("state onDeviceStateChange error:", err)
-		return
+		return err
 	}
 	logger.Println("StateChange recv...")
 	for {
@@ -207,8 +208,6 @@ func (pc *pluginClient) ListenStateChange() {
 			break
 		}
 		if err != nil {
-			logger.Println(err)
-			// TODO retry
 			break
 		}
 
@@ -227,4 +226,5 @@ func (pc *pluginClient) ListenStateChange() {
 		}()
 	}
 	logger.Println("StateChangeFromPlugin exit")
+	return err
 }

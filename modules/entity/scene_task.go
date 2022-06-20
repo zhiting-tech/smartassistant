@@ -17,10 +17,10 @@ import (
 type TaskType int
 
 const (
-	TaskTypeSmartDevice TaskType = iota + 1
-	TaskTypeManualRun
-	TaskTypeEnableAutoRun
-	TaskTypeDisableAutoRun
+	TaskTypeSmartDevice    TaskType = iota + 1 // 控制设备
+	TaskTypeManualRun                          // 执行场景
+	TaskTypeEnableAutoRun                      // 开启场景
+	TaskTypeDisableAutoRun                     // 关闭场景
 )
 
 // SceneTask 场景任务

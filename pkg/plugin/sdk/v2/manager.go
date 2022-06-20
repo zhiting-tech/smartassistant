@@ -3,6 +3,7 @@ package sdk
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/sirupsen/logrus"
@@ -11,7 +12,14 @@ import (
 	"github.com/zhiting-tech/smartassistant/pkg/thingmodel"
 )
 
-var ThingModelNotFoundErr = errors.New("thing model not found")
+var (
+	DeviceNotExist = errors.New("device not exist")
+)
+
+const (
+	ThingModelChangeEvent = "thing_model_change"
+	AttrChangeEvent       = "attr_change"
+)
 
 func newDevice(d Device) *device {
 	dd := device{
@@ -77,9 +85,16 @@ func (m *Manager) InitOrUpdateDevice(d Device) error {
 	if loaded {
 		logrus.Debugf("device %s already exist", d.Info().IID)
 		oldDevice := v.(*device)
-		if oldDevice.Address() != d.Address() {
-			logrus.Debugf("device %v change address: %s -> %s:",
+		addrChange := oldDevice.Address() != d.Address()
+		if addrChange {
+			logrus.Debugf("device %s change address: %s -> %s:",
 				d.Info().IID, oldDevice.Address(), d.Address())
+		}
+		disconnected := oldDevice.connected && !oldDevice.Online(d.Info().IID)
+		if disconnected {
+			logrus.Debugf("device %s disconnected, reconnecting...", d.Info().IID)
+		}
+		if addrChange || disconnected {
 			m.devices.Store(d.Info().IID, newDevice(d))
 			oldDevice.Disconnect(d.Info().IID)
 			return nil
@@ -123,12 +138,7 @@ func (m *Manager) OTA(iid, firmwareURL string) (ch chan OTAResp, err error) {
 	}
 }
 
-func (m *Manager) Connect(iid string, params map[string]interface{}) (err error) {
-
-	d, err := m.GetDevice(iid)
-	if err != nil {
-		return
-	}
+func (m *Manager) Connect(d *device, params map[string]interface{}) (err error) {
 
 	if ad, authRequired := d.Device.(AuthDevice); authRequired && !ad.IsAuth() {
 		if err = ad.Auth(params); err != nil {
@@ -145,7 +155,7 @@ func (m *Manager) Connect(iid string, params map[string]interface{}) (err error)
 		return
 	}
 
-	d.df = definer.NewThingModelDefiner(iid, m.notifyAttr, m.notifyThingModelChange)
+	d.df = definer.NewThingModelDefiner(d.Info().IID, m.notifyAttr, m.notifyThingModelChange)
 	d.Define(d.df)
 	if d.df != nil {
 		d.df.SetNotifyFunc()
@@ -179,19 +189,37 @@ func (m *Manager) Disconnect(iid string, params map[string]interface{}) (err err
 
 func (m *Manager) HealthCheck(iid string) bool {
 
-	d, err := m.getDevice(iid)
+	d, err := m.GetDevice(iid)
 	if err != nil {
 		logrus.Warnf("device %s not found", iid)
 		return false
 	}
 	go func() {
 		// 还没有连接则主动连接，设备需要自行处理认证信息持久化
-		if err = m.Connect(iid, nil); err != nil {
+		if err = m.Connect(d, nil); err != nil {
 			return
 		}
 	}()
 
-	online := d.Online(iid)
+	// 需要授权且未授权则更新物模型
+	if ad, ok := d.Device.(AuthDevice); ok && !ad.IsAuth() {
+
+		go func() {
+			df, err := m.getDefiner(iid)
+			if err != nil {
+				logrus.Warnf("device %s GetThingModel err %s", iid, err)
+				return
+			}
+
+			if err := df.UpdateThingModel(); err != nil {
+				logrus.Warnf("device %s UpdateThingModel err %s", iid, err)
+				return
+			}
+		}()
+		return false
+	}
+
+	online := d.Device.Online(iid)
 	logrus.Debugf("%s HealthCheck,online: %v", iid, online)
 	return online
 }
@@ -217,7 +245,7 @@ func (m *Manager) notifyEvent(event Event) error {
 func (m *Manager) notifyAttr(attrEvent definer.AttributeEvent) (err error) {
 	data, _ := json.Marshal(attrEvent)
 	ev := Event{
-		Type: "attr_change",
+		Type: AttrChangeEvent,
 		Data: data,
 	}
 
@@ -226,21 +254,29 @@ func (m *Manager) notifyAttr(attrEvent definer.AttributeEvent) (err error) {
 
 func (m *Manager) notifyThingModelChange(iid string, tme definer.ThingModelEvent) (err error) {
 
-	d, loaded := m.devices.Load(iid)
-	if !loaded {
-		return nil
-	}
-
 	tme.ThingModel.OTASupport, err = m.IsOTASupport(iid)
+	d, err := m.GetDevice(iid)
+	if err != nil {
+		return
+	}
+	var ad AuthDevice
+	ad, tme.ThingModel.AuthRequired = d.Device.(AuthDevice)
+	if tme.ThingModel.AuthRequired {
+		tme.ThingModel.IsAuth = ad.IsAuth()
+		tme.ThingModel.AuthParams = ad.AuthParams()
+	}
 	if err != nil {
 		return
 	}
 	data, _ := json.Marshal(tme)
 	ev := Event{
-		Type: "thing_model_change",
+		Type: ThingModelChangeEvent,
 		Data: data,
 	}
-	d.(*device).df.SetNotifyFunc()
+	// 物模型变更需要重新给新增加的instance设置通知函数
+	if d.df != nil {
+		d.df.SetNotifyFunc()
+	}
 	for _, ins := range tme.ThingModel.Instances {
 		m.devices.Store(ins.IID, d)
 	}
@@ -273,8 +309,11 @@ func (m *Manager) GetThingModel(iid string) (tm thingmodel.ThingModel, err error
 func (m *Manager) getDefiner(iid string) (df *definer.Definer, err error) {
 
 	d, err := m.GetDevice(iid)
+	if err != nil {
+		return
+	}
 	if d.df == nil {
-		err = ThingModelNotFoundErr
+		err = fmt.Errorf("%s definer is nil", iid)
 		return
 	}
 	return d.df, nil
@@ -282,18 +321,21 @@ func (m *Manager) getDefiner(iid string) (df *definer.Definer, err error) {
 
 func (m *Manager) getDevice(iid string) (Device, error) {
 
-	v, ok := m.devices.Load(iid)
-	if !ok {
-		return nil, errors.New("device not exist")
+	d, err := m.GetDevice(iid)
+	if err != nil {
+		return nil, err
 	}
-	return v.(*device).Device, nil
+	return d.Device, nil
 }
 
 func (m *Manager) GetDevice(iid string) (*device, error) {
 
 	v, ok := m.devices.Load(iid)
 	if !ok {
-		return nil, errors.New("device not exist")
+		return nil, DeviceNotExist
 	}
-	return v.(*device), nil
+	if d, ok := v.(*device); ok {
+		return d, nil
+	}
+	return nil, fmt.Errorf("%s: is not *device", iid)
 }

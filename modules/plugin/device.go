@@ -7,43 +7,16 @@ import (
 	"net/http"
 	url2 "net/url"
 	"strings"
+	"time"
 
 	"github.com/zhiting-tech/smartassistant/modules/api/utils/oauth"
 	"github.com/zhiting-tech/smartassistant/modules/config"
 	"github.com/zhiting-tech/smartassistant/modules/entity"
 	"github.com/zhiting-tech/smartassistant/modules/types"
-	"github.com/zhiting-tech/smartassistant/modules/types/status"
 	"github.com/zhiting-tech/smartassistant/modules/utils/url"
-	"github.com/zhiting-tech/smartassistant/pkg/errors"
-	"github.com/zhiting-tech/smartassistant/pkg/logger"
 	"github.com/zhiting-tech/smartassistant/pkg/plugin/sdk/v2"
 	"github.com/zhiting-tech/smartassistant/pkg/thingmodel"
 )
-
-// RemoveDevice 删除设备,断开相关连接和回收资源
-func RemoveDevice(ctx context.Context, deviceID int) (err error) {
-	d, err := entity.GetDeviceByID(deviceID)
-	if err != nil {
-		return errors.Wrap(err, errors.InternalServerErr)
-	}
-
-	if d.IsSa() {
-		return errors.New(status.ForbiddenRemoveSADevice)
-	}
-	identify := Identify{
-		PluginID: d.PluginID,
-		IID:      d.IID,
-		AreaID:   d.AreaID,
-	}
-	if err = DisconnectDevice(ctx, identify, nil); err != nil {
-		logger.Error("disconnect err:", err)
-	}
-
-	if err = entity.DelDeviceByID(deviceID); err != nil {
-		return errors.Wrap(err, errors.InternalServerErr)
-	}
-	return
-}
 
 // SetAttributes 通过插件设置设备的属性
 func SetAttributes(ctx context.Context, pluginID string, areaID uint64, setReq sdk.SetRequest) (err error) {
@@ -71,16 +44,21 @@ func ThingModelToEntity(iid string, tm thingmodel.ThingModel, pluginID string, a
 	if err != nil {
 		return
 	}
-	conf := GetGlobalClient().DeviceConfig(pluginID, info.Model)
+	conf := GetGlobalClient().Config(pluginID).DeviceConfig(info.Model, info.Type)
 	name := conf.Name
 	if conf.Name == "" {
 		name = info.Model
 	}
+	if info.Type == "" {
+		info.Type = conf.Type.String()
+	}
+
 	d = entity.Device{
 		Name:         name,
 		Model:        info.Model,
 		Manufacturer: info.Manufacturer,
 		IID:          info.IID,
+		Type:         info.Type,
 		PluginID:     pluginID,
 		AreaID:       areaID,
 		ThingModel:   tmJson,
@@ -97,7 +75,7 @@ func ThingModelToEntity(iid string, tm thingmodel.ThingModel, pluginID string, a
 	if err != nil {
 		return
 	}
-	d.Type = conf.Type.String()
+
 	return
 }
 func InstanceToEntity(instance thingmodel.Instance, pluginID, pIID string, areaID uint64) (d entity.Device, err error) {
@@ -113,18 +91,25 @@ func InstanceToEntity(instance thingmodel.Instance, pluginID, pIID string, areaI
 	if err != nil {
 		return
 	}
-	conf := GetGlobalClient().DeviceConfig(pluginID, info.Model)
+
+	conf := GetGlobalClient().Config(pluginID).DeviceConfig(info.Model, info.Type)
 	if info.Name == "" {
 		info.Name = conf.Name
 		if conf.Name == "" {
 			info.Name = info.Model
 		}
 	}
+
+	if info.Type == "" {
+		info.Type = conf.Type.String()
+	}
+
 	d = entity.Device{
 		Name:         info.Name,
 		Model:        info.Model,
 		Manufacturer: info.Manufacturer,
 		IID:          info.IID,
+		Type:         info.Type,
 		PluginID:     pluginID,
 		AreaID:       areaID,
 		ThingModel:   tmJson,
@@ -140,7 +125,7 @@ func InstanceToEntity(instance thingmodel.Instance, pluginID, pIID string, areaI
 	if err != nil {
 		return
 	}
-	d.Type = conf.Type.String()
+
 	return
 }
 
@@ -149,6 +134,11 @@ func ConnectDevice(ctx context.Context, identify Identify, authParams map[string
 }
 
 func DisconnectDevice(ctx context.Context, identify Identify, authParams map[string]interface{}) error {
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Second*10)
+		defer cancel()
+	}
 	return GetGlobalClient().Disconnect(ctx, identify, authParams)
 }
 
@@ -158,8 +148,8 @@ func ConcatPluginPath(pluginID string, paths ...string) string {
 }
 
 // DeviceLogoURL 设备Logo图片地址
-func DeviceLogoURL(req *http.Request, pluginID, model string) string {
-	logo := GetGlobalClient().DeviceConfig(pluginID, model).Logo
+func DeviceLogoURL(req *http.Request, pluginID, model, deviceType string) string {
+	logo := GetGlobalClient().Config(pluginID).DeviceConfig(model, deviceType).Logo
 	return PluginTargetURL(req, pluginID, model, logo)
 }
 
@@ -213,11 +203,11 @@ func ControlURLWithToken(d entity.Device, req *http.Request, pluginToken string)
 		"model":     d.Model,
 		"name":      d.Name,
 		"token":     pluginToken,
-		"type":      GetGlobalClient().DeviceConfig(d.PluginID, d.Model).Type,
+		"type":      GetGlobalClient().Config(d.PluginID).DeviceConfig(d.Model, d.Type).Type,
 		"sa_id":     config.GetConf().SmartAssistant.ID,
 		"plugin_id": d.PluginID,
 	}
-	controlPath := ConcatPluginPath(d.PluginID, GetGlobalClient().DeviceConfig(d.PluginID, d.Model).Control)
+	controlPath := ConcatPluginPath(d.PluginID, GetGlobalClient().Config(d.PluginID).DeviceConfig(d.Model, d.Type).Control)
 	return &URL{url.BuildURL(controlPath, q, req)}, nil
 }
 

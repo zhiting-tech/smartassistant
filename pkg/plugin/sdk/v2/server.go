@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	errors2 "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -80,6 +81,7 @@ func (p Server) Discover(request *emptypb.Empty, server proto.Plugin_DiscoverSer
 			Iid:          d.Info().IID,
 			Model:        d.Info().Model,
 			Manufacturer: d.Info().Manufacturer,
+			Type:         d.Info().Type,
 			AuthRequired: authRequired,
 		}
 		if authRequired && len(ad.AuthParams()) != 0 {
@@ -95,7 +97,18 @@ func (p Server) Connect(ctx context.Context, req *proto.AuthReq) (resp *proto.Ge
 
 	var params map[string]interface{}
 	json.Unmarshal(req.Params, &params)
-	if err = p.Manager.Connect(req.Iid, params); err != nil {
+
+	d, err := p.Manager.GetDevice(req.Iid)
+	if err != nil {
+		if !errors2.Is(err, DeviceNotExist) {
+			return
+		}
+		// 找不到设备时，阻塞等待发现设备并初始化
+		if err = p.discoverDevice(ctx, req.Iid); err != nil {
+			return
+		}
+	}
+	if err = p.Manager.Connect(d, params); err != nil {
 		return
 	}
 
@@ -135,6 +148,16 @@ func (p Server) GetInstances(context context.Context, request *proto.GetInstance
 	resp.OtaSupport, err = p.Manager.IsOTASupport(request.Iid)
 	if err != nil {
 		return
+	}
+	d, err := p.Manager.getDevice(request.Iid)
+	if err != nil {
+		return
+	}
+	var ad AuthDevice
+	ad, resp.AuthRequired = d.(AuthDevice)
+	if resp.AuthRequired {
+		resp.IsAuth = ad.IsAuth()
+		resp.AuthParams, _ = json.Marshal(ad.AuthParams())
 	}
 	logrus.Println("instances resp:", resp)
 	return
@@ -301,22 +324,67 @@ func (p *Server) discover(ctx context.Context) {
 	}()
 
 	devices := make(chan Device, 10)
-	var dd []Device
 	go func() {
-		for d := range devices {
-			dd = append(dd, d)
-			if err := p.Manager.InitOrUpdateDevice(d); err != nil {
-				logrus.Errorf("init or update device err %s", err.Error())
-				return
-			}
-		}
+		logrus.Debug("discovering...")
+		p.discoverFunc(ctx, devices)
+		logrus.Debug("discovering done")
+		close(devices)
 	}()
-	logrus.Debug("discovering...")
-	p.discoverFunc(ctx, devices)
-	logrus.Debug("discovering done")
-	close(devices)
 
+	var dd []Device
+	for d := range devices {
+		if err := p.Manager.InitOrUpdateDevice(d); err != nil {
+			logrus.Errorf("init or update device err %s", err.Error())
+			return
+		}
+		dd = append(dd, d)
+	}
 	p.Manager.discoveredDevices = make([]Device, len(dd))
 	copy(p.Manager.discoveredDevices, dd)
-	logrus.Debugf("discover %d devices", len(dd))
+
+	logrus.Debugf("discover %d devices", len(p.Manager.discoveredDevices))
+}
+
+// discoverDevice 发现设备
+func (p *Server) discoverDevice(ctx context.Context, iid string) error {
+	defer func() {
+		if r := recover(); r != nil {
+			logrus.Errorf("discovering device panic: %v", r)
+		}
+	}()
+
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Second*10)
+		defer cancel()
+	}
+
+	devices := make(chan Device, 10)
+	go func() {
+		defer close(devices)
+		logrus.Debugf("discovering %s...", iid)
+		p.discoverFunc(ctx, devices)
+		logrus.Debugf("discover %s done", iid)
+	}()
+
+	for {
+		select {
+		case <-time.NewTimer(time.Second * 10).C:
+			return DeviceNotExist
+		case d, ok := <-devices:
+			if !ok {
+				logrus.Debugf("discover %s done, not found", iid)
+				return DeviceNotExist
+			}
+			if d.Info().IID == iid {
+				if err := p.Manager.InitOrUpdateDevice(d); err != nil {
+					logrus.Errorf("init or update device err %s", err.Error())
+					return err
+				}
+				logrus.Debugf("device %s found and init", iid)
+				return nil
+			}
+		}
+	}
+
 }

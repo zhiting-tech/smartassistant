@@ -17,26 +17,27 @@ const (
 	// serviceDiscover 发现设备
 	serviceDiscover ServiceType = "discover"
 
+	// serviceSubscribeEvent 订阅事件
 	serviceSubscribeEvent ServiceType = "subscribe_event"
 
-	// serviceGetInstances 获取设备物模型
-	serviceGetInstances ServiceType = "get_instances"
-	// serviceSetAttributes 设置设备属性
-	serviceSetAttributes ServiceType = "set_attributes"
-	// serviceConnect 连接（认证、配对）
-	serviceConnect ServiceType = "connect"
-	// serviceDisconnect 断开连接（取消配对）
-	serviceDisconnect ServiceType = "disconnect"
-	// serviceOTA 查看设备是否有固件更新
-	serviceCheckUpdate ServiceType = "check_update"
-	// serviceOTA 更新设备固件
-	serviceOTA ServiceType = "ota"
-	// serviceListGateways
-	serviceListGateways ServiceType = "list_gateways"
-	// serviceDeviceStates 设备的日志
-	serviceDeviceStates ServiceType = "device_states"
-	// serviceSubDevices 子设备列表
-	serviceSubDevices ServiceType = "sub_devices"
+	// ServiceGetInstances 获取设备物模型
+	ServiceGetInstances ServiceType = "get_instances"
+	// ServiceSetAttributes 设置设备属性
+	ServiceSetAttributes ServiceType = "set_attributes"
+	// ServiceConnect 连接（认证、配对）
+	ServiceConnect ServiceType = "connect"
+	// ServiceDisconnect 断开连接（取消配对）
+	ServiceDisconnect ServiceType = "disconnect"
+	// ServiceCheckUpdate 查看设备是否有固件更新
+	ServiceCheckUpdate ServiceType = "check_update"
+	// ServiceOTA 更新设备固件
+	ServiceOTA ServiceType = "ota"
+	// ServiceListGateways 设备支持的网关
+	ServiceListGateways ServiceType = "list_gateways"
+	// ServiceDeviceStates 设备的日志
+	ServiceDeviceStates ServiceType = "device_states"
+	// ServiceSubDevices 子设备列表
+	ServiceSubDevices ServiceType = "sub_devices"
 )
 
 type MsgType string
@@ -56,7 +57,7 @@ type Request struct {
 	Event string `json:"event,omitempty"` // server为 subscribe_event 时可选
 
 	ginCtx *gin.Context
-	user   *session.User // 发起请求的用户信息
+	User   *session.User // 发起请求的用户信息
 }
 
 type CallFunc func(req Request) (interface{}, error)
